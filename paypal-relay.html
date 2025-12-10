@@ -2,99 +2,172 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>uju & Co. PayPal Checkout</title>
+<meta charset="utf-8" />
+<title>PayPal Checkout</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <style>
-  body { font-family: 'Dosis', sans-serif; margin: 20px; text-align:center; }
-  h2 { text-align: center; margin-bottom: 20px; }
-  #cartSummary { max-width: 500px; margin: 0 auto 20px; text-align:left; }
-  .cartRow { display: flex; justify-content: space-between; margin-bottom: 8px; }
-  .totalRow { font-weight: bold; border-top:1px solid #ccc; padding-top:8px; }
-  #paypal-buttons-container {
-    display: flex;
-    justify-content: center; /* center PayPal button */
-    margin-top: 20px;
-  }
+body{font-family:'Dosis',sans-serif;padding:20px;}
+h2{margin-bottom:20px;}
+  body{font-family:'Dosis',sans-serif;padding:18px;max-width:820px;margin:auto;}
+  h2{margin-bottom:12px;}
+  .info{color:#333;margin-bottom:12px;}
+  .empty{color:#666;}
 </style>
 </head>
 <body>
-
-<h2>uju & Co. PayPal Checkout</h2>
-<div id="cartSummary"></div>
-<div id="paypal-buttons-container"></div>
-
-<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE"></script>
+<h2>PayPal Checkout</h2>
+<div id="paypal-button-container"></div>
+  <h2>PayPal Checkout</h2>
+  <div id="status" class="info"></div>
+  <div id="paypal-button-container"></div>
 
 <script>
-// Parse cart items from URL query
+// Get cart from URL
 const params = new URLSearchParams(window.location.search);
-const cartItems = [];
+let cart = {};
+try { cart = JSON.parse(params.get('cart')||'{}'); } catch(e){ console.error(e); }
 
-for (const [key, value] of params.entries()) {
-  const decoded = decodeURIComponent(key);
-  const parts = decoded.split('|'); // "Product Name|qty|price"
-  if (parts.length === 3) {
-    const name = parts[0];
-    const qty = parseInt(parts[1]);
-    const price = parseFloat(parts[2]);
-    if (!isNaN(qty) && !isNaN(price)) {
-      cartItems.push({ name, qty, price });
-    }
+// Map product names to prices
+function getPrice(productName){
+    if(productName.includes("Tree")) return 80;
+    if(productName.includes("Shell")) return 24;
+    if(productName.includes("Vase")) return 50;
+    return 0;
+/*
+Relay page: reads ?cart=... from URL.
+Supports two formats:
+ - legacy map: {"Bethlehem Star - Bubble Pink":2, "Vertical Shell Soap Dish":1}
+ - new array: [{name:"Bethlehem Star - Bubble Pink", quantity:2, unit_amount:{currency_code:"USD", value:"80.00"}}, ...]
+This page prefers explicit unit_amount supplied by the client; otherwise it falls back to internal price map.
+*/
+
+function parseCartParam(){
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('cart') || '{}';
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed;
+  } catch(e){
+    console.error('Invalid cart JSON', e);
+    return {};
   }
 }
 
-// Render cart summary
-function renderCartSummary() {
-  const container = document.getElementById('cartSummary');
-  let total = 0;
-  let html = '';
-  cartItems.forEach(item => {
-    const lineTotal = item.qty * item.price;
-    total += lineTotal;
-    html += `<div class="cartRow"><span>${item.name} x ${item.qty}</span><span>$${lineTotal.toFixed(2)}</span></div>`;
-  });
-  html += `<div class="cartRow totalRow"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
-  container.innerHTML = html;
+function getPriceByName(name){
+  // canonical price map fallback (keeps compatibility)
+  // use simple checks so names like "Bethlehem Star - Bubble Pink" are matched
+  if(name.toLowerCase().includes('bethlehem') || name.toLowerCase().includes('star')) return 80.00;
+  if(name.toLowerCase().includes('shell')) return 24.00;
+  if(name.toLowerCase().includes('vase')) return 50.00;
+  // fallback 0
+  return 0.00;
 }
 
-renderCartSummary();
+// Build PayPal items
+const items = Object.keys(cart).map(name=>({
+    name: name,
+    unit_amount: { currency_code: "USD", value: getPrice(name).toFixed(2) },
+    quantity: cart[name]
+}));
 
-// Render PayPal button
-paypal.Buttons({
-  style: { layout: 'horizontal', shape:'rect' },
-  createOrder: function(data, actions) {
-    return actions.order.create({
-      purchase_units: [{
-        amount: {
-          currency_code: "USD",
-          value: cartItems.reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2),
-          breakdown: {
-            item_total: {
-              currency_code: "USD",
-              value: cartItems.reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2)
+const total = items.reduce((sum,item)=>sum + parseFloat(item.unit_amount.value)*item.quantity,0);
+
+if(items.length===0){
+    document.getElementById('paypal-button-container').innerHTML='<p>Cart is empty</p>';
+} else {
+    paypal.Buttons({
+        createOrder: function(data, actions){
+            return actions.order.create({
+                purchase_units: [{
+                    items: items,
+                    amount: {
+                        currency_code: "USD",
+                        value: total.toFixed(2),
+                        breakdown: { item_total: { currency_code:"USD", value: total.toFixed(2) } }
+                    }
+                }]
+            });
+        },
+        onApprove: function(data, actions){
+            return actions.order.capture().then(function(details){
+                alert('Transaction completed by '+details.payer.name.given_name);
+            });
+        }
+    }).render('#paypal-button-container');
+function buildItemsFromParsed(parsed){
+  // If parsed is an array of items with unit_amount, use directly (preferred)
+  if(Array.isArray(parsed)){
+    // normalize unit_amount to strings with 2 decimals
+    return parsed.map(it=>{
+      const q = Number(it.quantity||it.qty||0);
+      const price = (it.unit_amount && it.unit_amount.value) ? Number(it.unit_amount.value) : getPriceByName(it.name);
+      return {
+        name: String(it.name),
+        unit_amount: { currency_code: "USD", value: price.toFixed(2) },
+        quantity: String(Math.max(1, Math.floor(q)))
+      };
+    }).filter(i=>i.quantity>0);
+  }
+
+  // If parsed is an object map: name -> qty
+  if(parsed && typeof parsed === 'object'){
+    return Object.keys(parsed).map(key=>{
+      const qty = Number(parsed[key]) || 0;
+      const price = getPriceByName(key);
+      return {
+        name: String(key),
+        unit_amount: { currency_code: "USD", value: price.toFixed(2) },
+        quantity: String(Math.max(1, Math.floor(qty)))
+      };
+    }).filter(i=>i.quantity>0);
+  }
+
+  return [];
+}
+
+(function init(){
+  const parsed = parseCartParam();
+  const items = buildItemsFromParsed(parsed);
+
+  const status = document.getElementById('status');
+  if(!items || items.length===0){
+    status.innerHTML = '<span class="empty">Cart is empty — add items from the store and try again.</span>';
+    return;
+  }
+
+  // compute totals
+  const total = items.reduce((s,it)=> s + (parseFloat(it.unit_amount.value) * Number(it.quantity)), 0);
+
+  status.innerHTML = `Preparing ${items.length} item(s) — total: $${total.toFixed(2)}`;
+
+  paypal.Buttons({
+    createOrder: function(data, actions){
+      return actions.order.create({
+        purchase_units: [{
+          items: items,
+          amount: {
+            currency_code: "USD",
+            value: total.toFixed(2),
+            breakdown: {
+              item_total: { currency_code: "USD", value: total.toFixed(2) }
             }
           }
-        },
-        items: cartItems.map(it => ({
-          name: it.name,
-          unit_amount: { currency_code: "USD", value: it.price.toFixed(2) },
-          quantity: it.qty
-        }))
-      }],
-      application_context: {
-        brand_name: "uju & Co.",
-        user_action: "PAY_NOW",
-        shipping_preference: "NO_SHIPPING"
-      }
-    });
-  },
-  onApprove: function(data, actions) {
-    return actions.order.capture().then(function(details) {
-      alert("Transaction completed by " + details.payer.name.given_name + "!");
-    });
-  }
-}).render('#paypal-buttons-container');
-
+        }]
+      });
+    },
+    onApprove: function(data, actions){
+      return actions.order.capture().then(function(details){
+        alert('Transaction completed by ' + (details.payer.name && details.payer.name.given_name ? details.payer.name.given_name : 'buyer') + '. Thank you!');
+        // Optionally redirect to thank-you page here.
+      });
+    },
+    onError: function(err){
+      console.error('PayPal Buttons error', err);
+      status.innerHTML = '<span style="color:#c00">An error occurred while loading PayPal. Please try again.</span>';
+    }
+  }).render('#paypal-button-container');
+})();
 </script>
 </body>
 </html>

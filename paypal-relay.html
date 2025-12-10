@@ -3,66 +3,75 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PayPal Checkout</title>
+<title>uju & Co. PayPal Checkout</title>
 <style>
-  body { font-family: 'Dosis', sans-serif; max-width: 600px; margin: 30px auto; padding: 10px; }
+  body { font-family: 'Dosis', sans-serif; margin: 20px; text-align:center; }
   h2 { text-align: center; margin-bottom: 20px; }
-  #cartSummary { margin-bottom: 20px; }
-  .cartRow { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #ccc; }
-  .cartRow:last-child { border-bottom: none; font-weight: bold; }
-  #paypal-buttons-container { display: flex; justify-content: center; margin-top: 20px; }
+  #cartSummary { max-width: 500px; margin: 0 auto 20px; text-align:left; }
+  .cartRow { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .totalRow { font-weight: bold; border-top:1px solid #ccc; padding-top:8px; }
+  #paypal-buttons-container {
+    display: flex;
+    justify-content: center; /* center PayPal button */
+    margin-top: 20px;
+  }
 </style>
 </head>
 <body>
-<h2>PayPal Checkout</h2>
+
+<h2>uju & Co. PayPal Checkout</h2>
 <div id="cartSummary"></div>
 <div id="paypal-buttons-container"></div>
 
 <script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE"></script>
+
 <script>
-function parseCartItems() {
-  const params = new URLSearchParams(window.location.search);
-  const items = [];
-  for (const [key, value] of params.entries()) {
-    // key = item name, value = qty|price
-    const [qtyStr, priceStr] = value.split('|');
-    const qty = parseInt(qtyStr);
-    const price = parseFloat(priceStr);
-    items.push({ name: decodeURIComponent(key), qty, price });
+// Parse cart items from URL query
+const params = new URLSearchParams(window.location.search);
+const cartItems = [];
+
+for (const [key, value] of params.entries()) {
+  const decoded = decodeURIComponent(key);
+  const parts = decoded.split('|'); // "Product Name|qty|price"
+  if (parts.length === 3) {
+    const name = parts[0];
+    const qty = parseInt(parts[1]);
+    const price = parseFloat(parts[2]);
+    if (!isNaN(qty) && !isNaN(price)) {
+      cartItems.push({ name, qty, price });
+    }
   }
-  return items;
 }
 
-function renderCartSummary(items) {
+// Render cart summary
+function renderCartSummary() {
   const container = document.getElementById('cartSummary');
   let total = 0;
   let html = '';
-  items.forEach(item => {
+  cartItems.forEach(item => {
     const lineTotal = item.qty * item.price;
     total += lineTotal;
     html += `<div class="cartRow"><span>${item.name} x ${item.qty}</span><span>$${lineTotal.toFixed(2)}</span></div>`;
   });
-  html += `<div class="cartRow"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
+  html += `<div class="cartRow totalRow"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
   container.innerHTML = html;
-  return total;
 }
 
-const cartItems = parseCartItems();
-const totalAmount = renderCartSummary(cartItems);
+renderCartSummary();
 
-// PayPal Buttons
+// Render PayPal button
 paypal.Buttons({
-  style: { layout: 'horizontal', shape: 'rect' },
+  style: { layout: 'horizontal', shape:'rect' },
   createOrder: function(data, actions) {
     return actions.order.create({
       purchase_units: [{
         amount: {
           currency_code: "USD",
-          value: totalAmount.toFixed(2),
+          value: cartItems.reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2),
           breakdown: {
             item_total: {
               currency_code: "USD",
-              value: totalAmount.toFixed(2)
+              value: cartItems.reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2)
             }
           }
         },
@@ -82,10 +91,10 @@ paypal.Buttons({
   onApprove: function(data, actions) {
     return actions.order.capture().then(function(details) {
       alert("Transaction completed by " + details.payer.name.given_name + "!");
-      window.close(); // closes the relay tab after payment
     });
   }
 }).render('#paypal-buttons-container');
+
 </script>
 </body>
 </html>

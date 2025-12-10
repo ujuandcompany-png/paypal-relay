@@ -20,12 +20,28 @@
 <div id="paypal-buttons-container"></div>
 
 <script>
-const sampleCartItems = [
-  { name: 'Eggshell Drying Vase', qty: 2, price: 50 },
-  { name: 'Ornament', qty: 1, price: 15 }
-];
+// Read cart items from URL parameters: ?item=name,qty,price|item2=name2,qty,price
+function getCartFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const items = [];
+  for (const [key, value] of params.entries()) {
+    if (key.startsWith('item')) {
+      const parts = value.split(',');
+      if (parts.length === 3) {
+        items.push({
+          name: decodeURIComponent(parts[0]),
+          qty: Number(parts[1]),
+          price: Number(parts[2])
+        });
+      }
+    }
+  }
+  return items;
+}
 
-function renderCart(items){
+const cartItems = getCartFromURL();
+
+function renderCart(items){(items){
   const container = document.getElementById('cartSummary');
   let total = 0;
   let html = '';

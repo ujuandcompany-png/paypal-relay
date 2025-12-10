@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PayPal Checkout</title>
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
+<style>
+body{font-family:'Dosis',sans-serif;padding:20px;}
+h2{margin-bottom:20px;}
+</style>
+</head>
+<body>
+<h2>PayPal Checkout</h2>
+<div id="paypal-button-container"></div>
+<script>
+// Get cart from URL
+const params = new URLSearchParams(window.location.search);
+let cart = {};
+try { cart = JSON.parse(params.get('cart')||'{}'); } catch(e){ console.error(e); }
+
+// Map product names to prices
+function getPrice(productName){
+    if(productName.includes("Tree")) return 80;
+    if(productName.includes("Shell")) return 24;
+    if(productName.includes("Vase")) return 50;
+    return 0;
+}
+
+// Build PayPal items
+const items = Object.keys(cart).map(name=>({
+    name: name,
+    unit_amount: { currency_code: "USD", value: getPrice(name).toFixed(2) },
+    quantity: cart[name]
+}));
+
+const total = items.reduce((sum,item)=>sum + parseFloat(item.unit_amount.value)*item.quantity,0);
+
+if(items.length===0){
+    document.getElementById('paypal-button-container').innerHTML='<p>Cart is empty</p>';
+} else {
+    paypal.Buttons({
+        createOrder: function(data, actions){
+            return actions.order.create({
+                purchase_units: [{
+                    items: items,
+                    amount: {
+                        currency_code: "USD",
+                        value: total.toFixed(2),
+                        breakdown: { item_total: { currency_code:"USD", value: total.toFixed(2) } }
+                    }
+                }]
+            });
+        },
+        onApprove: function(data, actions){
+            return actions.order.capture().then(function(details){
+                alert('Transaction completed by '+details.payer.name.given_name);
+            });
+        }
+    }).render('#paypal-button-container');
+}
+</script>
+</body>
+</html>

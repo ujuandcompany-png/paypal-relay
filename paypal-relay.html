@@ -1,125 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- PayPal SDK with brand_name -->
-  <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD&intent=capture&commit=true&enable-funding=card&merchant-id=*"
-          data-namespace="paypal_sdk"
-          data-brand-name="uju & Co.">
-  </script>
-
-  <title>uju & Co. PayPal Checkout</title>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    .status-bubble {
-      position: fixed;
-      bottom: 25px;
-      right: 25px;
-      background: #28a745;
-      color: white;
-      padding: 12px 22px;
-      border-radius: 999px;
-      font-size: 16px;
-      font-weight: bold;
-      opacity: 0;
-      transition: opacity 0.4s ease;
-      pointer-events: none;
-      z-index: 9999;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>uju & Co. PayPal Checkout</title>
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
+<style>
+body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
+h1 { font-size: 28px; margin-bottom: 20px; }
+.cartItem { margin-bottom: 10px; font-size: 18px; }
+</style>
 </head>
-
 <body>
-  <h2>uju & Co. PayPal Checkout</h2>
-  <div id="paypal-button-container"></div>
-  <div id="statusBubble" class="status-bubble">PayPal Cart Updated ✓</div>
 
-  <script>
-    // Show green success pill
-    function showStatusBubble() {
-      const b = document.getElementById("statusBubble");
-      b.style.opacity = 1;
-      setTimeout(() => b.style.opacity = 0, 1800);
-    }
+<h1>uju & Co. PayPal Checkout</h1>
+<div id="cartItems"></div>
+<div id="paypal-button-container" style="margin-top:30px;"></div>
 
-    // Read product details passed from Google Sites
-    const urlParams = new URLSearchParams(window.location.search);
+<script>
+// Parse cart from URL parameters
+const urlParams = new URLSearchParams(window.location.search);
+const cart = [];
 
-    const itemName  = urlParams.get("item_name") || "Unknown Item";
-    const itemPrice = parseFloat(urlParams.get("amount") || "0").toFixed(2);
-    const quantity  = parseInt(urlParams.get("quantity") || "1");
-    const hostedId  = urlParams.get("hosted_button_id") || "";
-    const optionName  = urlParams.get("on0") || null;
-    const optionValue = urlParams.get("os0") || null;
+const itemNames = urlParams.getAll("item_name");
+const amounts = urlParams.getAll("amount");
+const quantities = urlParams.getAll("quantity");
+const hostedIDs = urlParams.getAll("hosted_button_id");
+const options = urlParams.getAll("os0"); // color/variant
 
-    // For debugging
-    console.log("Relay received:", {
-      itemName, itemPrice, quantity, hostedId, optionName, optionValue
+for(let i=0;i<itemNames.length;i++){
+    cart.push({
+        name: itemNames[i] + (options[i] ? " – "+options[i] : ""),
+        unit_amount: { currency_code: "USD", value: amounts[i] },
+        quantity: quantities[i],
+        hosted_button_id: hostedIDs[i]
     });
+}
 
-    paypal_sdk.Buttons({
-      style: {
-        color: "gold",
-        shape: "rect",
-        label: "checkout"
-      },
+// Show items in the relay page
+const cartDiv = document.getElementById("cartItems");
+if(cart.length===0){
+    cartDiv.innerHTML="<p>Your cart is empty.</p>";
+}else{
+    cart.forEach(item=>{
+        const div = document.createElement("div");
+        div.className="cartItem";
+        div.textContent=`${item.name} x ${item.quantity} ($${item.unit_amount.value})`;
+        cartDiv.appendChild(div);
+    });
+}
 
-      createOrder: function(data, actions) {
-        showStatusBubble();
-
-        let item = {
-          name: itemName,
-          unit_amount: {
-            currency_code: "USD",
-            value: itemPrice
-          },
-          quantity: quantity
-        };
-
-        if (optionName && optionValue) {
-          item.description = `${optionName}: ${optionValue}`;
-        }
-
+// Render PayPal Buttons
+paypal.Buttons({
+    style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'checkout' },
+    createOrder: function(data, actions) {
         return actions.order.create({
-          purchase_units: [{
-            amount: {
-              currency_code: "USD",
-              value: (itemPrice * quantity).toFixed(2),
-              breakdown: {
-                item_total: {
-                  currency_code: "USD",
-                  value: (itemPrice * quantity).toFixed(2)
-                }
-              }
-            },
-            items: [item]
-          }],
-          application_context: {
-            brand_name: "uju & Co.",
-            user_action: "PAY_NOW"
-          }
+            purchase_units: [{
+                amount: {
+                    currency_code: "USD",
+                    value: cart.reduce((sum,item)=>sum + item.unit_amount.value*item.quantity,0).toFixed(2),
+                    breakdown: {
+                        item_total: {
+                            currency_code: "USD",
+                            value: cart.reduce((sum,item)=>sum + item.unit_amount.value*item.quantity,0).toFixed(2)
+                        }
+                    }
+                },
+                items: cart.map(item=>({
+                    name: item.name,
+                    unit_amount: item.unit_amount,
+                    quantity: item.quantity
+                }))
+            }],
+            application_context: {
+                brand_name: "uju & Co.",
+                shipping_preference: "NO_SHIPPING"
+            }
         });
-      },
-
-      onApprove: function(data, actions) {
-        return actions.order.capture().then(function(orderData) {
-          alert("Payment completed!");
+    },
+    onApprove: function(data, actions) {
+        return actions.order.capture().then(function(details) {
+            alert('Transaction completed by ' + details.payer.name.given_name + '!');
+            window.close(); // Optional: close the relay page after payment
         });
-      },
-
-      onError: function(err) {
-        console.error("PayPal error:", err);
-        alert("Something went wrong with PayPal.");
-      }
-
-    }).render("#paypal-button-container");
-  </script>
+    },
+    onError: function(err){
+        console.error(err);
+        alert("An error occurred during checkout. Please try again.");
+    }
+}).render('#paypal-button-container');
+</script>
 
 </body>
 </html>

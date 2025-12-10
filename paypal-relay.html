@@ -1,126 +1,125 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>PayPal Checkout</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
-<style>
-  body{font-family:'Dosis',sans-serif;padding:18px;max-width:820px;margin:auto;}
-  h2{margin-bottom:12px;}
-  .info{color:#333;margin-bottom:12px;}
-  .empty{color:#666;}
-</style>
-</head>
-<body>
-  <h2>PayPal Checkout</h2>
-  <div id="status" class="info"></div>
-  <div id="paypal-button-container"></div>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<script>
-/*
-Relay page: reads ?cart=... from URL.
-Supports two formats:
- - legacy map: {"Bethlehem Star - Bubble Pink":2, "Vertical Shell Soap Dish":1}
- - new array: [{name:"Bethlehem Star - Bubble Pink", quantity:2, unit_amount:{currency_code:"USD", value:"80.00"}}, ...]
-This page prefers explicit unit_amount supplied by the client; otherwise it falls back to internal price map.
-*/
+  <!-- PayPal SDK with brand_name -->
+  <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD&intent=capture&commit=true&enable-funding=card&merchant-id=*"
+          data-namespace="paypal_sdk"
+          data-brand-name="uju & Co.">
+  </script>
 
-function parseCartParam(){
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get('cart') || '{}';
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed;
-  } catch(e){
-    console.error('Invalid cart JSON', e);
-    return {};
-  }
-}
+  <title>uju & Co. PayPal Checkout</title>
 
-function getPriceByName(name){
-  // canonical price map fallback (keeps compatibility)
-  // use simple checks so names like "Bethlehem Star - Bubble Pink" are matched
-  if(name.toLowerCase().includes('bethlehem') || name.toLowerCase().includes('star')) return 80.00;
-  if(name.toLowerCase().includes('shell')) return 24.00;
-  if(name.toLowerCase().includes('vase')) return 50.00;
-  // fallback 0
-  return 0.00;
-}
-
-function buildItemsFromParsed(parsed){
-  // If parsed is an array of items with unit_amount, use directly (preferred)
-  if(Array.isArray(parsed)){
-    // normalize unit_amount to strings with 2 decimals
-    return parsed.map(it=>{
-      const q = Number(it.quantity||it.qty||0);
-      const price = (it.unit_amount && it.unit_amount.value) ? Number(it.unit_amount.value) : getPriceByName(it.name);
-      return {
-        name: String(it.name),
-        unit_amount: { currency_code: "USD", value: price.toFixed(2) },
-        quantity: String(Math.max(1, Math.floor(q)))
-      };
-    }).filter(i=>i.quantity>0);
-  }
-
-  // If parsed is an object map: name -> qty
-  if(parsed && typeof parsed === 'object'){
-    return Object.keys(parsed).map(key=>{
-      const qty = Number(parsed[key]) || 0;
-      const price = getPriceByName(key);
-      return {
-        name: String(key),
-        unit_amount: { currency_code: "USD", value: price.toFixed(2) },
-        quantity: String(Math.max(1, Math.floor(qty)))
-      };
-    }).filter(i=>i.quantity>0);
-  }
-
-  return [];
-}
-
-(function init(){
-  const parsed = parseCartParam();
-  const items = buildItemsFromParsed(parsed);
-
-  const status = document.getElementById('status');
-  if(!items || items.length===0){
-    status.innerHTML = '<span class="empty">Cart is empty — add items from the store and try again.</span>';
-    return;
-  }
-
-  // compute totals
-  const total = items.reduce((s,it)=> s + (parseFloat(it.unit_amount.value) * Number(it.quantity)), 0);
-
-  status.innerHTML = `Preparing ${items.length} item(s) — total: $${total.toFixed(2)}`;
-
-  paypal.Buttons({
-    createOrder: function(data, actions){
-      return actions.order.create({
-        purchase_units: [{
-          items: items,
-          amount: {
-            currency_code: "USD",
-            value: total.toFixed(2),
-            breakdown: {
-              item_total: { currency_code: "USD", value: total.toFixed(2) }
-            }
-          }
-        }]
-      });
-    },
-    onApprove: function(data, actions){
-      return actions.order.capture().then(function(details){
-        alert('Transaction completed by ' + (details.payer.name && details.payer.name.given_name ? details.payer.name.given_name : 'buyer') + '. Thank you!');
-        // Optionally redirect to thank-you page here.
-      });
-    },
-    onError: function(err){
-      console.error('PayPal Buttons error', err);
-      status.innerHTML = '<span style="color:#c00">An error occurred while loading PayPal. Please try again.</span>';
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
     }
-  }).render('#paypal-button-container');
-})();
-</script>
+    .status-bubble {
+      position: fixed;
+      bottom: 25px;
+      right: 25px;
+      background: #28a745;
+      color: white;
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: bold;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+      z-index: 9999;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>uju & Co. PayPal Checkout</h2>
+  <div id="paypal-button-container"></div>
+  <div id="statusBubble" class="status-bubble">PayPal Cart Updated ✓</div>
+
+  <script>
+    // Show green success pill
+    function showStatusBubble() {
+      const b = document.getElementById("statusBubble");
+      b.style.opacity = 1;
+      setTimeout(() => b.style.opacity = 0, 1800);
+    }
+
+    // Read product details passed from Google Sites
+    const urlParams = new URLSearchParams(window.location.search);
+
+    const itemName  = urlParams.get("item_name") || "Unknown Item";
+    const itemPrice = parseFloat(urlParams.get("amount") || "0").toFixed(2);
+    const quantity  = parseInt(urlParams.get("quantity") || "1");
+    const hostedId  = urlParams.get("hosted_button_id") || "";
+    const optionName  = urlParams.get("on0") || null;
+    const optionValue = urlParams.get("os0") || null;
+
+    // For debugging
+    console.log("Relay received:", {
+      itemName, itemPrice, quantity, hostedId, optionName, optionValue
+    });
+
+    paypal_sdk.Buttons({
+      style: {
+        color: "gold",
+        shape: "rect",
+        label: "checkout"
+      },
+
+      createOrder: function(data, actions) {
+        showStatusBubble();
+
+        let item = {
+          name: itemName,
+          unit_amount: {
+            currency_code: "USD",
+            value: itemPrice
+          },
+          quantity: quantity
+        };
+
+        if (optionName && optionValue) {
+          item.description = `${optionName}: ${optionValue}`;
+        }
+
+        return actions.order.create({
+          purchase_units: [{
+            amount: {
+              currency_code: "USD",
+              value: (itemPrice * quantity).toFixed(2),
+              breakdown: {
+                item_total: {
+                  currency_code: "USD",
+                  value: (itemPrice * quantity).toFixed(2)
+                }
+              }
+            },
+            items: [item]
+          }],
+          application_context: {
+            brand_name: "uju & Co.",
+            user_action: "PAY_NOW"
+          }
+        });
+      },
+
+      onApprove: function(data, actions) {
+        return actions.order.capture().then(function(orderData) {
+          alert("Payment completed!");
+        });
+      },
+
+      onError: function(err) {
+        console.error("PayPal error:", err);
+        alert("Something went wrong with PayPal.");
+      }
+
+    }).render("#paypal-button-container");
+  </script>
+
 </body>
 </html>

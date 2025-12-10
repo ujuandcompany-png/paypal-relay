@@ -1,63 +1,126 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8" />
 <title>PayPal Checkout</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <style>
-body{font-family:'Dosis',sans-serif;padding:20px;}
-h2{margin-bottom:20px;}
+  body{font-family:'Dosis',sans-serif;padding:18px;max-width:820px;margin:auto;}
+  h2{margin-bottom:12px;}
+  .info{color:#333;margin-bottom:12px;}
+  .empty{color:#666;}
 </style>
 </head>
 <body>
-<h2>PayPal Checkout</h2>
-<div id="paypal-button-container"></div>
+  <h2>PayPal Checkout</h2>
+  <div id="status" class="info"></div>
+  <div id="paypal-button-container"></div>
+
 <script>
-// Get cart from URL
-const params = new URLSearchParams(window.location.search);
-let cart = {};
-try { cart = JSON.parse(params.get('cart')||'{}'); } catch(e){ console.error(e); }
+/*
+Relay page: reads ?cart=... from URL.
+Supports two formats:
+ - legacy map: {"Bethlehem Star - Bubble Pink":2, "Vertical Shell Soap Dish":1}
+ - new array: [{name:"Bethlehem Star - Bubble Pink", quantity:2, unit_amount:{currency_code:"USD", value:"80.00"}}, ...]
+This page prefers explicit unit_amount supplied by the client; otherwise it falls back to internal price map.
+*/
 
-// Map product names to prices
-function getPrice(productName){
-    if(productName.includes("Tree")) return 80;
-    if(productName.includes("Shell")) return 24;
-    if(productName.includes("Vase")) return 50;
-    return 0;
+function parseCartParam(){
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('cart') || '{}';
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed;
+  } catch(e){
+    console.error('Invalid cart JSON', e);
+    return {};
+  }
 }
 
-// Build PayPal items
-const items = Object.keys(cart).map(name=>({
-    name: name,
-    unit_amount: { currency_code: "USD", value: getPrice(name).toFixed(2) },
-    quantity: cart[name]
-}));
-
-const total = items.reduce((sum,item)=>sum + parseFloat(item.unit_amount.value)*item.quantity,0);
-
-if(items.length===0){
-    document.getElementById('paypal-button-container').innerHTML='<p>Cart is empty</p>';
-} else {
-    paypal.Buttons({
-        createOrder: function(data, actions){
-            return actions.order.create({
-                purchase_units: [{
-                    items: items,
-                    amount: {
-                        currency_code: "USD",
-                        value: total.toFixed(2),
-                        breakdown: { item_total: { currency_code:"USD", value: total.toFixed(2) } }
-                    }
-                }]
-            });
-        },
-        onApprove: function(data, actions){
-            return actions.order.capture().then(function(details){
-                alert('Transaction completed by '+details.payer.name.given_name);
-            });
-        }
-    }).render('#paypal-button-container');
+function getPriceByName(name){
+  // canonical price map fallback (keeps compatibility)
+  // use simple checks so names like "Bethlehem Star - Bubble Pink" are matched
+  if(name.toLowerCase().includes('bethlehem') || name.toLowerCase().includes('star')) return 80.00;
+  if(name.toLowerCase().includes('shell')) return 24.00;
+  if(name.toLowerCase().includes('vase')) return 50.00;
+  // fallback 0
+  return 0.00;
 }
+
+function buildItemsFromParsed(parsed){
+  // If parsed is an array of items with unit_amount, use directly (preferred)
+  if(Array.isArray(parsed)){
+    // normalize unit_amount to strings with 2 decimals
+    return parsed.map(it=>{
+      const q = Number(it.quantity||it.qty||0);
+      const price = (it.unit_amount && it.unit_amount.value) ? Number(it.unit_amount.value) : getPriceByName(it.name);
+      return {
+        name: String(it.name),
+        unit_amount: { currency_code: "USD", value: price.toFixed(2) },
+        quantity: String(Math.max(1, Math.floor(q)))
+      };
+    }).filter(i=>i.quantity>0);
+  }
+
+  // If parsed is an object map: name -> qty
+  if(parsed && typeof parsed === 'object'){
+    return Object.keys(parsed).map(key=>{
+      const qty = Number(parsed[key]) || 0;
+      const price = getPriceByName(key);
+      return {
+        name: String(key),
+        unit_amount: { currency_code: "USD", value: price.toFixed(2) },
+        quantity: String(Math.max(1, Math.floor(qty)))
+      };
+    }).filter(i=>i.quantity>0);
+  }
+
+  return [];
+}
+
+(function init(){
+  const parsed = parseCartParam();
+  const items = buildItemsFromParsed(parsed);
+
+  const status = document.getElementById('status');
+  if(!items || items.length===0){
+    status.innerHTML = '<span class="empty">Cart is empty — add items from the store and try again.</span>';
+    return;
+  }
+
+  // compute totals
+  const total = items.reduce((s,it)=> s + (parseFloat(it.unit_amount.value) * Number(it.quantity)), 0);
+
+  status.innerHTML = `Preparing ${items.length} item(s) — total: $${total.toFixed(2)}`;
+
+  paypal.Buttons({
+    createOrder: function(data, actions){
+      return actions.order.create({
+        purchase_units: [{
+          items: items,
+          amount: {
+            currency_code: "USD",
+            value: total.toFixed(2),
+            breakdown: {
+              item_total: { currency_code: "USD", value: total.toFixed(2) }
+            }
+          }
+        }]
+      });
+    },
+    onApprove: function(data, actions){
+      return actions.order.capture().then(function(details){
+        alert('Transaction completed by ' + (details.payer.name && details.payer.name.given_name ? details.payer.name.given_name : 'buyer') + '. Thank you!');
+        // Optionally redirect to thank-you page here.
+      });
+    },
+    onError: function(err){
+      console.error('PayPal Buttons error', err);
+      status.innerHTML = '<span style="color:#c00">An error occurred while loading PayPal. Please try again.</span>';
+    }
+  }).render('#paypal-button-container');
+})();
 </script>
 </body>
 </html>

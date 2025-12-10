@@ -12,8 +12,8 @@
   .totalRow { font-weight: bold; border-top:1px solid #ccc; padding-top:8px; }
   #paypal-buttons-container {
     display: flex;
-    justify-content: center; /* center PayPal buttons */
-    gap: 10px; /* spacing between buttons */
+    justify-content: center;
+    gap: 10px;
     margin-top: 20px;
   }
 </style>
@@ -25,22 +25,11 @@
 
 <script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE"></script>
 <script>
-function parseQueryParams() {
-  const params = new URLSearchParams(window.location.search);
-  const items = {};
-  for (const [key, value] of params.entries()) {
-    // key format: item_name / os0 / quantity / amount
-    const [k,v] = key.split(',');
-    items[key] = value;
-  }
-  return params;
-}
-
-// Parse items from query string
+// Parse cart items from URL query string
 const params = new URLSearchParams(window.location.search);
 const cartItems = {};
 for (const [key, value] of params.entries()) {
-  const parts = key.split('|');
+  const parts = key.split('|'); // name|qty|price
   const variantName = decodeURIComponent(parts[0]);
   const qty = parseInt(parts[1]);
   const amount = parseFloat(parts[2]);
@@ -48,6 +37,7 @@ for (const [key, value] of params.entries()) {
   cartItems[variantName].qty += qty;
 }
 
+// Render cart summary
 function renderCartSummary() {
   const container = document.getElementById('cartSummary');
   let total = 0;
@@ -65,6 +55,9 @@ function renderCartSummary() {
 renderCartSummary();
 
 // PayPal Buttons
+const totalValue = Object.values(cartItems).reduce((sum,it)=>sum+it.qty*it.price,0);
+const finalValue = totalValue > 0 ? totalValue.toFixed(2) : "0.01"; // minimum $0.01
+
 paypal.Buttons({
   style: { layout: 'horizontal', shape:'rect' },
   createOrder: function(data, actions) {
@@ -72,12 +65,9 @@ paypal.Buttons({
       purchase_units: [{
         amount: {
           currency_code: "USD",
-          value: Object.values(cartItems).reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2),
+          value: finalValue,
           breakdown: {
-            item_total: {
-              currency_code: "USD",
-              value: Object.values(cartItems).reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2)
-            }
+            item_total: { currency_code: "USD", value: finalValue }
           }
         },
         items: Object.entries(cartItems).map(([name, it])=>({

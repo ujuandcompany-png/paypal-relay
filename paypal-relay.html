@@ -2,93 +2,124 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>uju & Co. PayPal Checkout</title>
-<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <style>
-body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
-h1 { font-size: 28px; margin-bottom: 20px; }
-.cartItem { margin-bottom: 10px; font-size: 18px; }
+  body { font-family: 'Dosis', sans-serif; padding: 20px; }
+  h1 { text-align: center; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+  th { background: #f8f8f8; }
+  tfoot td { font-weight: bold; }
+  #paypal-button-container { margin-top: 20px; text-align: center; }
 </style>
 </head>
 <body>
-
 <h1>uju & Co. PayPal Checkout</h1>
-<div id="cartItems"></div>
-<div id="paypal-button-container" style="margin-top:30px;"></div>
+<table id="cartTable">
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th>Variant</th>
+      <th>Qty</th>
+      <th>Unit Price</th>
+      <th>Total</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">Total</td>
+      <td id="grandTotal">$0</td>
+    </tr>
+  </tfoot>
+</table>
 
+<div id="paypal-button-container"></div>
+
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <script>
-// Parse cart from URL parameters
-const urlParams = new URLSearchParams(window.location.search);
-const cart = [];
-
-const itemNames = urlParams.getAll("item_name");
-const amounts = urlParams.getAll("amount");
-const quantities = urlParams.getAll("quantity");
-const hostedIDs = urlParams.getAll("hosted_button_id");
-const options = urlParams.getAll("os0"); // color/variant
-
-for(let i=0;i<itemNames.length;i++){
-    cart.push({
-        name: itemNames[i] + (options[i] ? " – "+options[i] : ""),
-        unit_amount: { currency_code: "USD", value: amounts[i] },
-        quantity: quantities[i],
-        hosted_button_id: hostedIDs[i]
+function getQueryParams() {
+  const params = new URLSearchParams(window.location.search);
+  const items = [];
+  let index = 0;
+  while(params.has('item_name')) {
+    items.push({
+      name: params.getAll('item_name')[index],
+      variant: params.getAll('os0')[index],
+      quantity: parseInt(params.getAll('quantity')[index]),
+      unitPrice: parseFloat(params.getAll('amount')[index])
     });
+    index++;
+    if(index >= params.getAll('item_name').length) break;
+  }
+  return items;
 }
 
-// Show items in the relay page
-const cartDiv = document.getElementById("cartItems");
-if(cart.length===0){
-    cartDiv.innerHTML="<p>Your cart is empty.</p>";
-}else{
-    cart.forEach(item=>{
-        const div = document.createElement("div");
-        div.className="cartItem";
-        div.textContent=`${item.name} x ${item.quantity} ($${item.unit_amount.value})`;
-        cartDiv.appendChild(div);
-    });
-}
+// Render item table
+const items = getQueryParams();
+const tbody = document.querySelector('#cartTable tbody');
+let grandTotal = 0;
 
-// Render PayPal Buttons
+items.forEach(item=>{
+  const lineTotal = item.quantity * item.unitPrice;
+  grandTotal += lineTotal;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${item.name}</td>
+    <td>${item.variant}</td>
+    <td>${item.quantity}</td>
+    <td>$${item.unitPrice.toFixed(2)}</td>
+    <td>$${lineTotal.toFixed(2)}</td>
+  `;
+  tbody.appendChild(tr);
+});
+document.getElementById('grandTotal').innerText = `$${grandTotal.toFixed(2)}`;
+
+// PayPal Buttons
 paypal.Buttons({
-    style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'checkout' },
-    createOrder: function(data, actions) {
-        return actions.order.create({
-            purchase_units: [{
-                amount: {
-                    currency_code: "USD",
-                    value: cart.reduce((sum,item)=>sum + item.unit_amount.value*item.quantity,0).toFixed(2),
-                    breakdown: {
-                        item_total: {
-                            currency_code: "USD",
-                            value: cart.reduce((sum,item)=>sum + item.unit_amount.value*item.quantity,0).toFixed(2)
-                        }
-                    }
-                },
-                items: cart.map(item=>({
-                    name: item.name,
-                    unit_amount: item.unit_amount,
-                    quantity: item.quantity
-                }))
-            }],
-            application_context: {
-                brand_name: "uju & Co.",
-                shipping_preference: "NO_SHIPPING"
-            }
-        });
-    },
-    onApprove: function(data, actions) {
-        return actions.order.capture().then(function(details) {
-            alert('Transaction completed by ' + details.payer.name.given_name + '!');
-            window.close(); // Optional: close the relay page after payment
-        });
-    },
-    onError: function(err){
-        console.error(err);
-        alert("An error occurred during checkout. Please try again.");
-    }
+  style: {
+    layout: 'vertical',
+    color: 'gold',
+    shape: 'rect',
+    label: 'checkout'
+  },
+  createOrder: function(data, actions) {
+    return actions.order.create({
+      purchase_units: [{
+        amount: {
+          currency_code: 'USD',
+          value: grandTotal.toFixed(2),
+          breakdown: {
+            item_total: { currency_code: 'USD', value: grandTotal.toFixed(2) }
+          }
+        },
+        items: items.map(i=>({
+          name: `${i.name} – ${i.variant}`,
+          unit_amount: { currency_code: 'USD', value: i.unitPrice.toFixed(2) },
+          quantity: i.quantity
+        }))
+      }],
+      application_context: {
+        brand_name: "uju & Co.",
+        shipping_preference: "NO_SHIPPING"
+      }
+    });
+  },
+  onApprove: function(data, actions) {
+    return actions.order.capture().then(function(details) {
+      alert(`Transaction completed by ${details.payer.name.given_name}!`);
+      window.close(); // close the relay tab after successful payment
+    });
+  },
+  onCancel: function() {
+    alert("Payment cancelled.");
+  },
+  onError: function(err) {
+    console.error(err);
+    alert("An error occurred during checkout.");
+  }
 }).render('#paypal-button-container');
 </script>
-
 </body>
 </html>

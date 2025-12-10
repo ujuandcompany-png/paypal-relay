@@ -1,91 +1,76 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PayPal Checkout</title>
+<!-- EGGSHELL VASE PRODUCT BUTTON SCRIPT -->
+<div class="cart-wrapper" data-product-name="Eggshell Drying & Crushing Vase by uju" data-pid="7V8SBRAM7LYQS" data-price="50" data-limit="4">
+  <label>Quantity</label>
+  <select class="qtySelect">
+    <option value="1" selected>1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="0">Delete item</option>
+  </select>
+
+  <button class="paybtn" onclick="addToPayPalCart(this)">🛒 Add to PayPal Cart</button>
+
+  <div id="vaseUpdatedMsg" class="updateMsg">Please close the previous PayPal Cart Tab to refresh</div>
+</div>
+
 <style>
-  body { font-family: 'Dosis', sans-serif; max-width: 600px; margin: 30px auto; padding: 10px; }
-  h2 { text-align: center; margin-bottom: 20px; }
-  #cartSummary { margin-bottom: 20px; }
-  .cartRow { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #ccc; }
-  .cartRow:last-child { border-bottom: none; font-weight: bold; }
-  #paypal-buttons-container { display: flex; justify-content: center; margin-top: 20px; }
+* { font-family: 'Dosis', sans-serif !important; font-size: 16px !important; }
+.cart-wrapper { width: 100%; max-width: 400px; margin: 20px auto; }
+.cart-wrapper label, .cart-wrapper select, .cart-wrapper button.paybtn { display: block; width: 100%; margin: 8px 0; }
+.cart-wrapper select, .cart-wrapper button.paybtn { padding: 10px; border-radius: 6px; }
+.cart-wrapper button.paybtn { background: #493b31; color: white; border: none; cursor: pointer; }
+.cart-wrapper button.paybtn:hover { opacity: 0.85; }
+.updateMsg { display: none; background: #28a745; color: white; padding: 5px 12px; margin-top: 10px; border-radius: 20px; font-size: 16px; width: max-content; white-space: nowrap; position: fixed; top: 20px; right: 20px; z-index: 9999; }
 </style>
-</head>
-<body>
-<h2>PayPal Checkout</h2>
-<div id="cartSummary"></div>
-<div id="paypal-buttons-container"></div>
 
-<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE"></script>
 <script>
-function parseCartItems() {
-  const params = new URLSearchParams(window.location.search);
-  const items = [];
-  for (const [key, value] of params.entries()) {
-    // key = item name, value = qty|price
-    const [qtyStr, priceStr] = value.split('|');
-    const qty = parseInt(qtyStr);
-    const price = parseFloat(priceStr);
-    items.push({ name: decodeURIComponent(key), qty, price });
+if(!window.myCart) window.myCart = {};
+if(!window.paypalWindow) window.paypalWindow = null;
+
+function addToPayPalCart(el){
+  const wrap = el.closest('.cart-wrapper');
+  const name = wrap.dataset.productName;
+  const pid = wrap.dataset.pid;
+  const price = parseFloat(wrap.dataset.price);
+  const limit = parseInt(wrap.dataset.limit);
+  const qty = parseInt(wrap.querySelector('.qtySelect').value);
+
+  if(qty === 0){
+    delete window.myCart[pid];
+  } else {
+    window.myCart[pid] = { name: name, qty: qty, price: price, limit: limit };
   }
-  return items;
-}
 
-function renderCartSummary(items) {
-  const container = document.getElementById('cartSummary');
-  let total = 0;
-  let html = '';
-  items.forEach(item => {
-    const lineTotal = item.qty * item.price;
-    total += lineTotal;
-    html += `<div class="cartRow"><span>${item.name} x ${item.qty}</span><span>$${lineTotal.toFixed(2)}</span></div>`;
-  });
-  html += `<div class="cartRow"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
-  container.innerHTML = html;
-  return total;
-}
+  const relayPage = 'https://ujuandcompany-png.github.io/paypal-relay/paypal-relay.html';
 
-const cartItems = parseCartItems();
-const totalAmount = renderCartSummary(cartItems);
+  // Force numbers to string with 2 decimals and encode for URL
+  const query = Object.values(window.myCart)
+    .map(it => encodeURIComponent(it.name) + '|' + it.qty + '|' + encodeURIComponent(it.price.toFixed(2)))
+    .join('&');
 
-// PayPal Buttons
-paypal.Buttons({
-  style: { layout: 'horizontal', shape: 'rect' },
-  createOrder: function(data, actions) {
-    return actions.order.create({
-      purchase_units: [{
-        amount: {
-          currency_code: "USD",
-          value: totalAmount.toFixed(2),
-          breakdown: {
-            item_total: {
-              currency_code: "USD",
-              value: totalAmount.toFixed(2)
-            }
-          }
-        },
-        items: cartItems.map(it => ({
-          name: it.name,
-          unit_amount: { currency_code: "USD", value: it.price.toFixed(2) },
-          quantity: it.qty
-        }))
-      }],
-      application_context: {
-        brand_name: "uju & Co.",
-        user_action: "PAY_NOW",
-        shipping_preference: "NO_SHIPPING"
-      }
-    });
-  },
-  onApprove: function(data, actions) {
-    return actions.order.capture().then(function(details) {
-      alert("Transaction completed by " + details.payer.name.given_name + "!");
-      window.close(); // closes the relay tab after payment
-    });
+  const url = relayPage + '?' + query;
+
+  try {
+    if(!window.paypalWindow || window.paypalWindow.closed){
+      window.paypalWindow = window.open(url, '_blank');
+    } else {
+      window.paypalWindow.focus();
+      const msg = document.getElementById('vaseUpdatedMsg');
+      msg.innerText = 'PayPal Cart Updated';
+      msg.style.display = 'inline-block';
+      setTimeout(()=>{ msg.style.display = 'none'; }, 2500);
+      return;
+    }
+  } catch(e) {
+    console.error('Failed to open PayPal window:', e);
+    alert('Unable to open PayPal checkout tab. Please check popup settings.');
+    return;
   }
-}).render('#paypal-buttons-container');
+
+  const msg = document.getElementById('vaseUpdatedMsg');
+  msg.innerText = 'Please close the previous PayPal Cart Tab to refresh';
+  msg.style.display = 'inline-block';
+  setTimeout(()=>{ msg.style.display = 'none'; }, 2500);
+}
 </script>
-</body>
-</html>

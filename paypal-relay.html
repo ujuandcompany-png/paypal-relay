@@ -20,14 +20,14 @@
 <div id="paypal-buttons-container"></div>
 
 <script>
-// Read cart items from URL parameters: ?item=name,qty,price|item2=name2,qty,price
+// Read cart items from URL parameters using '|' separator
 function getCartFromURL() {
   const params = new URLSearchParams(window.location.search);
   const items = [];
   for (const [key, value] of params.entries()) {
     if (key.startsWith('item')) {
-      const parts = value.split(',');
-      if (parts.length === 3) {
+      const parts = value.split('|'); // name|qty|price
+      if(parts.length >= 3){
         items.push({
           name: decodeURIComponent(parts[0]),
           qty: Number(parts[1]),
@@ -41,7 +41,7 @@ function getCartFromURL() {
 
 const cartItems = getCartFromURL();
 
-function renderCart(items){(items){
+function renderCart(items){
   const container = document.getElementById('cartSummary');
   let total = 0;
   let html = '';
@@ -55,27 +55,37 @@ function renderCart(items){(items){
   return total;
 }
 
-const total = renderCart(sampleCartItems);
+const total = renderCart(cartItems);
 
+// Load PayPal SDK with your live client ID
 const script = document.createElement('script');
-script.src = 'https://www.paypal.com/sdk/js?client-id=sb&currency=USD';
+script.src = 'https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD';
 document.body.appendChild(script);
+
 script.onload = () => {
   paypal.Buttons({
+    style: { layout: 'horizontal', shape:'rect' },
     createOrder: (data, actions) => {
       return actions.order.create({
         purchase_units: [{
           amount: { value: total.toFixed(2) },
-          items: sampleCartItems.map(it => ({
+          items: cartItems.map(it => ({
             name: it.name,
             unit_amount: { currency_code: 'USD', value: it.price.toFixed(2) },
             quantity: it.qty
           }))
-        }]
+        }],
+        application_context: {
+          brand_name: 'uju & Co.',
+          user_action: 'PAY_NOW',
+          shipping_preference: 'NO_SHIPPING'
+        }
       });
     },
     onApprove: (data, actions) => {
-      return actions.order.capture().then(details => alert('Paid by ' + details.payer.name.given_name));
+      return actions.order.capture().then(details => {
+        alert('Transaction completed by ' + details.payer.name.given_name + '!');
+      });
     }
   }).render('#paypal-buttons-container');
 };

@@ -6,22 +6,18 @@
 <title>uju & Co. PayPal Checkout</title>
 <style>
   body { font-family: 'Dosis', sans-serif; padding: 20px; }
-  h1 { text-align: center; font-family: 'Dosis', sans-serif; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; font-family: 'Dosis', sans-serif; }
-  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size:16px; }
+  h1 { text-align: center; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
   th { background: #f8f8f8; }
   tfoot td { font-weight: bold; }
-  button { font-family: 'Dosis', sans-serif; font-size:16px; }
-  .qtyBtn { width: 25px; height: 25px; text-align:center; line-height:1; cursor:pointer; border:1px solid #ccc; border-radius:4px; background:#f0f0f0; }
-  .qtyNumber { width: 30px; text-align:center; display:inline-block; }
-  .removeBtn { background:#dc3545; color:white; border:none; border-radius:4px; padding:2px 6px; cursor:pointer; }
-  #paypal-button-container { margin-top:20px; text-align:center; }
-  #updateMsg { display:block; background:#28a745; color:white; padding:10px 16px; border-radius:30px;
-               font-size:16px; text-align:center; opacity:0; transition: opacity 0.5s ease; margin-top:10px; }
+  input.qtyInput { width: 50px; text-align: center; }
+  #paypal-button-container { margin-top: 20px; text-align: center; }
+  button.updateBtn { padding: 4px 8px; margin-left:4px; cursor:pointer; }
 </style>
 </head>
 <body>
-<h1>uju & Co. Checkout</h1>
+<h1>uju & Co. PayPal Checkout</h1>
 
 <table id="cartTable">
   <thead>
@@ -44,115 +40,97 @@
   </tfoot>
 </table>
 
-<div id="updateMsg">Cart updated!</div>
 <div id="paypal-button-container"></div>
 
 <script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
+
 <script>
-if(!window.myCart) window.myCart = {};
+// Get cart from localStorage
+function getCart(){ return localStorage.getItem('relayCart') ? JSON.parse(localStorage.getItem('relayCart')) : {}; }
+function saveCart(cart){ localStorage.setItem('relayCart', JSON.stringify(cart)); }
 
-// Parse query parameters to add new products
-function parseQueryParams() {
-  const params = new URLSearchParams(window.location.search);
-  const names = params.getAll('item_name');
-  const variants = params.getAll('os0');
-  const quantities = params.getAll('quantity');
-  const prices = params.getAll('amount');
-  for(let i=0;i<names.length;i++){
-    const key = variants[i] ? names[i] + '-' + variants[i] : names[i];
-    const qty = parseInt(quantities[i]);
-    const price = parseFloat(prices[i]);
-    if(qty === 0) delete window.myCart[key];
-    else {
-      window.myCart[key] = { name:names[i], variant:variants[i]||'', qty, price };
-    }
-  }
-}
-
-// Update cart table
+// Render table
 function renderCart(){
   const tbody = document.querySelector('#cartTable tbody');
-  tbody.innerHTML='';
-  let grandTotal=0;
-  for(const key in window.myCart){
-    const item = window.myCart[key];
-    const lineTotal = item.qty * item.price;
-    grandTotal += lineTotal;
+  tbody.innerHTML = '';
+  let cart = getCart();
+  let grandTotal = 0;
+
+  Object.keys(cart).forEach(key=>{
+    const item = cart[key];
+    const total = item.qty * item.price;
+    grandTotal += total;
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${item.name}</td>
-      <td>${item.variant}</td>
+      <td>${item.variant || ''}</td>
       <td>
-        <button class="qtyBtn" onclick="adjustQty('${key}',-1)">−</button>
-        <span class="qtyNumber">${item.qty}</span>
-        <button class="qtyBtn" onclick="adjustQty('${key}',1)">+</button>
+        <input type="number" class="qtyInput" value="${item.qty}" min="1" max="${item.limit}" data-key="${key}">
+        <button class="updateBtn" data-key="${key}">Update</button>
       </td>
       <td>$${item.price.toFixed(2)}</td>
-      <td>$${lineTotal.toFixed(2)}</td>
-      <td><button class="removeBtn" onclick="removeItem('${key}')">X</button></td>
+      <td>$${total.toFixed(2)}</td>
+      <td><button class="updateBtn" data-key="${key}" data-remove="1">Remove</button></td>
     `;
     tbody.appendChild(tr);
-  }
-  document.getElementById('grandTotal').innerText=`$${grandTotal.toFixed(2)}`;
+  });
+
+  document.getElementById('grandTotal').innerText = `$${grandTotal.toFixed(2)}`;
 }
 
-// Quantity adjustment
-function adjustQty(key, change){
-  if(window.myCart[key]){
-    window.myCart[key].qty += change;
-    if(window.myCart[key].qty <=0) delete window.myCart[key];
+document.addEventListener('click', e=>{
+  if(e.target.classList.contains('updateBtn')){
+    const key = e.target.dataset.key;
+    let cart = getCart();
+    if(e.target.dataset.remove){
+      delete cart[key];
+    } else {
+      const input = document.querySelector(`input.qtyInput[data-key='${key}']`);
+      let newQty = parseInt(input.value);
+      if(newQty > cart[key].limit) newQty = cart[key].limit;
+      if(newQty <= 0) { delete cart[key]; }
+      else { cart[key].qty = newQty; }
+    }
+    saveCart(cart);
     renderCart();
-    showUpdateMsg();
   }
-}
+});
 
-// Remove item
-function removeItem(key){
-  delete window.myCart[key];
-  renderCart();
-  showUpdateMsg();
-}
-
-// Update message
-function showUpdateMsg(){
-  const msg = document.getElementById('updateMsg');
-  msg.style.opacity='1';
-  setTimeout(()=>{ msg.style.opacity='0'; },1500);
-}
-
-// Initialize
-parseQueryParams();
 renderCart();
 
-// PayPal buttons
+// PayPal Buttons
 paypal.Buttons({
-  style: { layout:'vertical', color:'gold', shape:'rect', label:'checkout' },
+  style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'checkout' },
   createOrder: function(data, actions){
-    const items = Object.values(window.myCart).map(i=>({
-      name:`${i.name}${i.variant?' – '+i.variant:''}`,
-      unit_amount:{ currency_code:'USD', value:i.price.toFixed(2) },
-      quantity:i.qty
-    }));
-    const total = items.reduce((sum,i)=>sum + i.unit_amount.value*i.quantity,0).toFixed(2);
+    const cart = getCart();
+    let grandTotal = 0;
+    const items = Object.values(cart).map(i=>{
+      grandTotal += i.qty * i.price;
+      return {
+        name: i.name + (i.variant ? ' – ' + i.variant : ''),
+        unit_amount: { currency_code: 'USD', value: i.price.toFixed(2) },
+        quantity: i.qty
+      }
+    });
+
     return actions.order.create({
       purchase_units:[{
-        amount:{ currency_code:'USD', value: total, breakdown:{ item_total:{ currency_code:'USD', value: total } } },
+        amount:{ currency_code:'USD', value:grandTotal.toFixed(2), breakdown:{ item_total:{ currency_code:'USD', value:grandTotal.toFixed(2) } } },
         items: items
       }],
       application_context: { brand_name:"uju & Co.", shipping_preference:"NO_SHIPPING" }
     });
   },
-  onApprove:function(data, actions){
+  onApprove: function(data, actions){
     return actions.order.capture().then(function(details){
       alert(`Transaction completed by ${details.payer.name.given_name}!`);
-      window.myCart={};
-      renderCart();
+      localStorage.removeItem('relayCart');
       window.close();
     });
   },
-  onCancel:function(){ alert("Payment cancelled."); },
-  onError:function(err){ console.error(err); alert("An error occurred during checkout."); }
+  onCancel: function(){ alert("Payment cancelled."); },
+  onError: function(err){ console.error(err); alert("An error occurred during checkout."); }
 }).render('#paypal-button-container');
 </script>
 </body>

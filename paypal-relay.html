@@ -1,161 +1,53 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>uju & Co. PayPal Checkout</title>
-<style>
-  body { font-family: 'Dosis', sans-serif; padding: 20px; }
-  h1 { text-align: center; margin-bottom: 20px; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-  th, td { border: 1px solid #ccc; padding: 8px; }
-  th { background: #f5f5f5; }
-  input.qtyChanger { width: 60px; }
-</style>
+<title>PayPal Relay Cart</title>
 </head>
-<body>
+<body style="font-family:Dosis;padding:20px;">
 
-<h1>Shopping Cart</h1>
-
-<table id="cartTable">
-  <thead>
-    <tr>
-      <th>Item</th>
-      <th>Variant</th>
-      <th>Qty</th>
-      <th>Price</th>
-      <th>Total</th>
-      <th>Action</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
-
-<div id="grandTotal" style="font-size:20px; font-weight:bold;"></div>
-
-<div id="paypal-button-container" style="margin-top:25px;"></div>
-
-<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
+<h2>Your Cart</h2>
+<div id="cartArea">Loading…</div>
 
 <script>
-// ---------------------------
-// READ & UPDATE CART STORAGE
-// ---------------------------
-function getCart() {
-  return JSON.parse(localStorage.getItem("relayAccumCart") || "{}");
-}
-function saveCart(cart){
-  localStorage.setItem("relayAccumCart", JSON.stringify(cart));
-}
+// Map key → product info
+const PRODUCTS = {
+  "JQ89PFTRRAXLN": { name:"The Vertical Shell Soap Dish by uju", price:24 },
+  "7V8SBRAM7LYQS": { name:"Eggshell Drying & Crushing Vase by uju", price:50 },
+  "BUBBLE": { name:"Tree Topper — Bubble Pink", price:32 },
+  "GLOW": { name:"Tree Topper — Glow Yellow", price:32 },
+  "CHAMPAGNE": { name:"Tree Topper — Champagne", price:32 },
+  "GOLD": { name:"Tree Topper — Gold", price:32 },
+  "SILVER": { name:"Tree Topper — Silver", price:32 }
+};
 
-// ---------------------------
-// ADD PRODUCT PASSED BY URL
-// ---------------------------
-const params = new URLSearchParams(window.location.search);
-if (params.has("pid")) {
-  let pid = params.get("pid");
-  let name = params.get("name");
-  let variant = params.get("variant");
-  let price = parseFloat(params.get("price"));
-  let qty = parseInt(params.get("qty"));
+function renderCart() {
+  const params = new URLSearchParams(window.location.search);
+  let html = "";
 
-  let cart = getCart();
-  if (!cart[pid]) cart[pid] = { pid, name, variant, price, qty };
-  else cart[pid].qty += qty;
+  params.forEach((qtyStr, key) => {
+    const qty = parseInt(qtyStr);
+    if (!PRODUCTS[key] || qty <= 0) return;
 
-  saveCart(cart);
-}
+    const p = PRODUCTS[key];
+    const subtotal = p.price * qty;
 
-// ---------------------------
-// RENDER CART TABLE
-// ---------------------------
-function renderCart(){
-  const cart = getCart();
-  const tbody = document.querySelector("#cartTable tbody");
-  tbody.innerHTML = "";
-  let grand = 0;
-
-  Object.values(cart).forEach(item => {
-    let line = item.qty * item.price;
-    grand += line;
-
-    let tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${item.name}</td>
-      <td>${item.variant || ""}</td>
-      <td><input class="qtyChanger" data-id="${item.pid}" type="number" min="0" value="${item.qty}"></td>
-      <td>$${item.price.toFixed(2)}</td>
-      <td>$${line.toFixed(2)}</td>
-      <td><button class="removeBtn" data-id="${item.pid}">Delete</button></td>
+    html += `
+      <div style="margin:10px 0; padding:10px; border:1px solid #ccc;">
+        <strong>${p.name}</strong><br>
+        Price: $${p.price}<br>
+        Qty: ${qty}<br>
+        Subtotal: $${subtotal}
+      </div>
     `;
-    tbody.appendChild(tr);
   });
 
-  document.querySelector("#grandTotal").innerText =
-    "Total: $" + grand.toFixed(2);
-
-  attachEvents();
+  if (!html) html = "Your cart is empty.";
+  document.getElementById("cartArea").innerHTML = html;
 }
-
-// ---------------------------
-// EVENTS (UPDATE / DELETE)
-// ---------------------------
-function attachEvents(){
-  document.querySelectorAll(".qtyChanger").forEach(input=>{
-    input.onchange = () => {
-      let id = input.dataset.id;
-      let qty = parseInt(input.value);
-      let cart = getCart();
-      if (qty <= 0) delete cart[id];
-      else cart[id].qty = qty;
-      saveCart(cart);
-      renderCart();
-    };
-  });
-
-  document.querySelectorAll(".removeBtn").forEach(btn=>{
-    btn.onclick = () => {
-      let id = btn.dataset.id;
-      let cart = getCart();
-      delete cart[id];
-      saveCart(cart);
-      renderCart();
-    };
-  });
-}
-
-// ---------------------------
-// PAYPAL CHECKOUT
-// ---------------------------
-paypal.Buttons({
-  createOrder: (data, actions) => {
-    const cart = getCart();
-    const items = Object.values(cart);
-    let total = items.reduce((sum, i)=>sum + i.price*i.qty, 0);
-
-    return actions.order.create({
-      purchase_units: [{
-        amount: {
-          value: total.toFixed(2)
-        },
-        items: items.map(i => ({
-          name: i.name + (i.variant ? " - " + i.variant : ""),
-          quantity: i.qty,
-          unit_amount: { currency_code:"USD", value:i.price.toFixed(2) }
-        }))
-      }]
-    });
-  },
-  onApprove: (data, actions) => {
-    return actions.order.capture().then(details=>{
-      alert("Payment completed by " + details.payer.name.given_name);
-      localStorage.removeItem("relayAccumCart");
-      window.close();
-    });
-  }
-}).render("#paypal-button-container");
 
 renderCart();
 </script>
+
 </body>
 </html>

@@ -9,7 +9,7 @@
   h2 { text-align: center; margin-bottom: 20px; }
   #cartSummary { max-width: 700px; margin: 0 auto 20px; text-align:left; font-size:16px; }
   .cartRow { display: flex; justify-content: space-between; margin-bottom: 8px; }
-  .cartRow span:first-child { width: 80px; text-align:left; }
+  .cartRow span:first-child { width: 60px; text-align:left; }
   .cartRow span:nth-child(2) { flex-grow:1; padding-left:10px; text-align:left; }
   .cartRow span:nth-child(3) { width: 40px; text-align:center; }
   .cartRow span:last-child { width: 80px; text-align:right; }
@@ -28,12 +28,13 @@
 <div id="paypal-buttons-container"></div>
 
 <script>
-// Parse items from query string dynamically
 function getCartItemsFromURL(){
   const params = new URLSearchParams(window.location.search);
   const cartItems = [];
   for(const [key,value] of params.entries()){
-    const [name, qty, price] = decodeURIComponent(value).split('|');
+    // Use key instead of value to allow Google Sites relay format
+    const decoded = decodeURIComponent(key);
+    const [name, qty, price] = decoded.split('|');
     cartItems.push({ name:name, qty:parseInt(qty), price:parseFloat(price) });
   }
   return cartItems;
@@ -67,6 +68,10 @@ function initPayPalButtons(){
   }
 
   const cartItems = getCartItemsFromURL();
+  if(cartItems.length===0){
+    document.getElementById('cartSummary').innerHTML='<p>Cart is empty</p>';
+    return;
+  }
   const totalAmount = renderCartSummary(cartItems);
 
   paypal.Buttons({
@@ -74,10 +79,10 @@ function initPayPalButtons(){
     createOrder:function(data, actions){
       return actions.order.create({
         purchase_units:[{
-          amount:{ currency_code:'USD', value:totalAmount.toFixed(2) },
+          amount:{ currency_code:'USD', value:totalAmount.toFixed(2), breakdown:{ item_total:{ currency_code:'USD', value:totalAmount.toFixed(2) } } },
           items: cartItems.map(it => ({
             name: it.name,
-            unit_amount: { currency_code:'USD', value: it.price.toFixed(2) },
+            unit_amount: { currency_code:'USD', value:it.price.toFixed(2) },
             quantity: it.qty
           }))
         }],
@@ -96,11 +101,16 @@ function initPayPalButtons(){
   }).render('#paypal-buttons-container');
 }
 
-// Load PayPal SDK dynamically
-const script = document.createElement('script');
-script.src='https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE';
-script.onload=initPayPalButtons;
-document.head.appendChild(script);
+// Load PayPal SDK dynamically once
+if(!window.paypalSDKLoaded){
+  const script = document.createElement('script');
+  script.src='https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE';
+  script.onload=initPayPalButtons;
+  document.head.appendChild(script);
+  window.paypalSDKLoaded = true;
+} else {
+  initPayPalButtons();
+}
 </script>
 
 </body>

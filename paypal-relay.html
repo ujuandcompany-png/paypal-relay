@@ -30,8 +30,7 @@ function getCartItemsFromURL(){
   const params = new URLSearchParams(window.location.search);
   const cartItems = [];
   for(const [key,value] of params.entries()){
-    const decoded = decodeURIComponent(key);
-    const parts = decoded.split('|');
+    const parts = decodeURIComponent(value).split('|');
     if(parts.length>=3){
       const name = parts[0];
       const qty = parseInt(parts[1]) || 1;
@@ -64,10 +63,7 @@ function renderCartSummary(cartItems){
 }
 
 function initPayPalButtons(){
-  if(typeof paypal==='undefined'){
-    setTimeout(initPayPalButtons,100);
-    return;
-  }
+  if(typeof paypal==='undefined'){ setTimeout(initPayPalButtons,100); return; }
 
   const cartItems = getCartItemsFromURL();
   if(cartItems.length===0){
@@ -75,6 +71,7 @@ function initPayPalButtons(){
     document.getElementById('loadingMsg').style.display='none';
     return;
   }
+
   const totalAmount = renderCartSummary(cartItems);
   document.getElementById('loadingMsg').style.display='none';
 
@@ -83,7 +80,7 @@ function initPayPalButtons(){
     createOrder:function(data, actions){
       return actions.order.create({
         purchase_units:[{
-          amount:{ currency_code:'USD', value:totalAmount.toFixed(2), breakdown:{ item_total:{ currency_code:'USD', value:totalAmount.toFixed(2) } } },
+          amount:{ currency_code:'USD', value:totalAmount.toFixed(2) },
           items: cartItems.map(it => ({
             name: it.name,
             unit_amount: { currency_code:'USD', value:it.price.toFixed(2) },
@@ -109,7 +106,6 @@ function initPayPalButtons(){
   }).render('#paypal-buttons-container');
 }
 
-// Load PayPal SDK dynamically once
 (function loadPayPalSDK(){
   if(window.paypalSDKLoaded) return initPayPalButtons();
   const script = document.createElement('script');

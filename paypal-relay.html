@@ -14,11 +14,7 @@
   .cartRow span:nth-child(3) { width: 40px; text-align:center; }
   .cartRow span:last-child { width: 80px; text-align:right; }
   .totalRow { font-weight: bold; border-top:1px solid #ccc; padding-top:8px; }
-  #paypal-buttons-container {
-    display: flex;
-    justify-content: center;
-    margin-top: 20px;
-  }
+  #paypal-buttons-container { display: flex; justify-content: center; margin-top: 20px; }
   #loadingMsg { font-size:16px; margin-top:10px; color:#555; }
 </style>
 </head>
@@ -35,8 +31,13 @@ function getCartItemsFromURL(){
   const cartItems = [];
   for(const [key,value] of params.entries()){
     const decoded = decodeURIComponent(key);
-    const [name, qty, price] = decoded.split('|');
-    cartItems.push({ name:name, qty:parseInt(qty), price:parseFloat(price) });
+    const parts = decoded.split('|');
+    if(parts.length>=3){
+      const name = parts[0];
+      const qty = parseInt(parts[1]) || 1;
+      const price = parseFloat(parts[2]) || 0;
+      cartItems.push({ name:name, qty:qty, price:price });
+    }
   }
   return cartItems;
 }
@@ -75,7 +76,6 @@ function initPayPalButtons(){
     return;
   }
   const totalAmount = renderCartSummary(cartItems);
-
   document.getElementById('loadingMsg').style.display='none';
 
   paypal.Buttons({
@@ -110,18 +110,18 @@ function initPayPalButtons(){
 }
 
 // Load PayPal SDK dynamically once
-if(!window.paypalSDKLoaded){
+(function loadPayPalSDK(){
+  if(window.paypalSDKLoaded) return initPayPalButtons();
   const script = document.createElement('script');
   script.src='https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE';
   script.onload=initPayPalButtons;
   script.onerror=function(){
     document.getElementById('loadingMsg').innerText='Failed to load PayPal SDK.';
+    console.error('PayPal SDK failed to load.');
   };
   document.head.appendChild(script);
-  window.paypalSDKLoaded = true;
-} else {
-  initPayPalButtons();
-}
+  window.paypalSDKLoaded=true;
+})();
 </script>
 
 </body>

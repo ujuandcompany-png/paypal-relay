@@ -9,7 +9,7 @@
   h2 { text-align: center; margin-bottom: 20px; }
   #cartSummary { max-width: 700px; margin: 0 auto 20px; text-align:left; font-size:16px; }
   .cartRow { display: flex; justify-content: space-between; margin-bottom: 8px; }
-  .cartRow span:first-child { width: 120px; text-align:left; }
+  .cartRow span:first-child { width: 80px; text-align:left; }
   .cartRow span:nth-child(2) { flex-grow:1; padding-left:10px; text-align:left; }
   .cartRow span:nth-child(3) { width: 40px; text-align:center; }
   .cartRow span:last-child { width: 80px; text-align:right; }
@@ -27,17 +27,19 @@
 <div id="cartSummary"></div>
 <div id="paypal-buttons-container"></div>
 
-<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE"></script>
-
 <script>
-// Sample cart data for preview
-const cartItems = [
-  { name: 'Eggshell Drying & Crushing Vase by uju', qty: 1, price: 50 },
-  { name: 'The Vertical Shell Soap Dish by uju', qty: 2, price: 24 },
-  { name: 'Bethlehem Star by uju – Bubble Pink', qty: 1, price: 80 }
-];
+// Parse items from query string dynamically
+function getCartItemsFromURL(){
+  const params = new URLSearchParams(window.location.search);
+  const cartItems = [];
+  for(const [key,value] of params.entries()){
+    const [name, qty, price] = decodeURIComponent(value).split('|');
+    cartItems.push({ name:name, qty:parseInt(qty), price:parseFloat(price) });
+  }
+  return cartItems;
+}
 
-function renderCartSummary() {
+function renderCartSummary(cartItems){
   const container = document.getElementById('cartSummary');
   let total = 0;
   let html = '';
@@ -55,38 +57,50 @@ function renderCartSummary() {
     <span></span><span></span><span>Total</span><span>$${total.toFixed(2)}</span>
   </div>`;
   container.innerHTML = html;
+  return total;
 }
 
-renderCartSummary();
-
-paypal.Buttons({
-  style: { layout: 'horizontal', shape:'rect' },
-  createOrder: function(data, actions) {
-    return actions.order.create({
-      purchase_units: [{
-        amount: {
-          currency_code: 'USD',
-          value: cartItems.reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2)
-        },
-        items: cartItems.map(it => ({
-          name: it.name,
-          unit_amount: { currency_code: 'USD', value: it.price.toFixed(2) },
-          quantity: it.qty
-        }))
-      }],
-      application_context: {
-        brand_name: 'Google Site Cart App-Live',
-        user_action: 'PAY_NOW',
-        shipping_preference: 'NO_SHIPPING'
-      }
-    });
-  },
-  onApprove: function(data, actions) {
-    return actions.order.capture().then(function(details) {
-      alert('Transaction completed by ' + details.payer.name.given_name + '!');
-    });
+function initPayPalButtons(){
+  if(typeof paypal==='undefined'){
+    setTimeout(initPayPalButtons,100);
+    return;
   }
-}).render('#paypal-buttons-container');
+
+  const cartItems = getCartItemsFromURL();
+  const totalAmount = renderCartSummary(cartItems);
+
+  paypal.Buttons({
+    style: { layout:'horizontal', shape:'rect' },
+    createOrder:function(data, actions){
+      return actions.order.create({
+        purchase_units:[{
+          amount:{ currency_code:'USD', value:totalAmount.toFixed(2) },
+          items: cartItems.map(it => ({
+            name: it.name,
+            unit_amount: { currency_code:'USD', value: it.price.toFixed(2) },
+            quantity: it.qty
+          }))
+        }],
+        application_context:{
+          brand_name:'Google Site Cart App-Live',
+          user_action:'PAY_NOW',
+          shipping_preference:'NO_SHIPPING'
+        }
+      });
+    },
+    onApprove:function(data, actions){
+      return actions.order.capture().then(function(details){
+        alert('Transaction completed by '+details.payer.name.given_name+'!');
+      });
+    }
+  }).render('#paypal-buttons-container');
+}
+
+// Load PayPal SDK dynamically
+const script = document.createElement('script');
+script.src='https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE';
+script.onload=initPayPalButtons;
+document.head.appendChild(script);
 </script>
 
 </body>

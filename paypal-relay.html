@@ -31,12 +31,16 @@
 function getCartItemsFromURL(){
   const params = new URLSearchParams(window.location.search);
   const cartItems = [];
+
   for(const [key,value] of params.entries()){
-    // Use key instead of value to allow Google Sites relay format
-    const decoded = decodeURIComponent(key);
-    const [name, qty, price] = decoded.split('|');
-    cartItems.push({ name:name, qty:parseInt(qty), price:parseFloat(price) });
+    let decoded = decodeURIComponent(key || value);
+    const parts = decoded.split('|');
+    if(parts.length===3){
+      const [name, qty, price] = parts;
+      cartItems.push({ name: name.trim(), qty: parseInt(qty), price: parseFloat(price) });
+    }
   }
+
   return cartItems;
 }
 
@@ -44,6 +48,7 @@ function renderCartSummary(cartItems){
   const container = document.getElementById('cartSummary');
   let total = 0;
   let html = '';
+
   cartItems.forEach(item => {
     const lineTotal = item.qty * item.price;
     total += lineTotal;
@@ -54,9 +59,11 @@ function renderCartSummary(cartItems){
       <span>$${lineTotal.toFixed(2)}</span>
     </div>`;
   });
+
   html += `<div class="cartRow totalRow">
     <span></span><span></span><span>Total</span><span>$${total.toFixed(2)}</span>
   </div>`;
+
   container.innerHTML = html;
   return total;
 }
@@ -68,10 +75,12 @@ function initPayPalButtons(){
   }
 
   const cartItems = getCartItemsFromURL();
+
   if(cartItems.length===0){
     document.getElementById('cartSummary').innerHTML='<p>Cart is empty</p>';
     return;
   }
+
   const totalAmount = renderCartSummary(cartItems);
 
   paypal.Buttons({
@@ -79,7 +88,13 @@ function initPayPalButtons(){
     createOrder:function(data, actions){
       return actions.order.create({
         purchase_units:[{
-          amount:{ currency_code:'USD', value:totalAmount.toFixed(2), breakdown:{ item_total:{ currency_code:'USD', value:totalAmount.toFixed(2) } } },
+          amount:{ 
+            currency_code:'USD', 
+            value:totalAmount.toFixed(2), 
+            breakdown:{ 
+              item_total:{ currency_code:'USD', value:totalAmount.toFixed(2) } 
+            } 
+          },
           items: cartItems.map(it => ({
             name: it.name,
             unit_amount: { currency_code:'USD', value:it.price.toFixed(2) },
@@ -101,11 +116,11 @@ function initPayPalButtons(){
   }).render('#paypal-buttons-container');
 }
 
-// Load PayPal SDK dynamically once
+// Load PayPal SDK dynamically
 if(!window.paypalSDKLoaded){
   const script = document.createElement('script');
   script.src='https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE';
-  script.onload=initPayPalButtons;
+  script.onload = initPayPalButtons;
   document.head.appendChild(script);
   window.paypalSDKLoaded = true;
 } else {

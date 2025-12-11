@@ -4,91 +4,90 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>uju & Co. PayPal Cart Checkout</title>
-<link href="https://fonts.googleapis.com/css2?family=Dosis&display=swap" rel="stylesheet">
 <style>
-  body { font-family: 'Dosis', sans-serif; margin: 20px; }
-  #cartSummary { margin-bottom: 20px; border: 1px dashed #ccc; padding: 10px; width: 300px; }
-  #cartSummary div { display: grid; grid-template-columns: 1fr auto; padding: 4px 0; }
-  #cartSummary div.total-row { font-weight: bold; }
-  #paypal-buttons-container { margin-top: 20px; }
-  h2 { line-height: 1.2; }
+  body { font-family: 'Dosis', sans-serif; margin: 20px; text-align:center; }
+  h2 { text-align: center; margin-bottom: 20px; }
+  #cartSummary { max-width: 700px; margin: 0 auto 20px; text-align:left; font-size:16px; }
+  .cartRow { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .cartRow span:first-child { width: 120px; text-align:left; }
+  .cartRow span:nth-child(2) { flex-grow:1; padding-left:10px; text-align:left; }
+  .cartRow span:nth-child(3) { width: 40px; text-align:center; }
+  .cartRow span:last-child { width: 80px; text-align:right; }
+  .totalRow { font-weight: bold; border-top:1px solid #ccc; padding-top:8px; }
+  #paypal-buttons-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+  }
 </style>
 </head>
 <body>
-<h2>uju & Co.<br><br><span>PayPal Cart Checkout</span></h2>
-<div id="cartSummary">Cart will display here</div>
+
+<h2>uju & Co.<br><br>PayPal Cart Checkout</h2>
+<div id="cartSummary"></div>
 <div id="paypal-buttons-container"></div>
 
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE"></script>
+
 <script>
-// Read cart items from URL parameters using '|' separator
-function getCartFromURL() {
-  const params = new URLSearchParams(window.location.search);
-  const items = [];
-  for (const [key, value] of params.entries()) {
-    if (key.startsWith('item')) {
-      const parts = value.split('|'); // name|qty|price
-      if(parts.length >= 3){
-        items.push({
-          name: decodeURIComponent(parts[0]),
-          qty: Number(parts[1]),
-          price: Number(parts[2])
-        });
-      }
-    }
-  }
-  return items;
-}
+// Sample cart data for preview
+const cartItems = [
+  { name: 'Eggshell Drying & Crushing Vase by uju', qty: 1, price: 50 },
+  { name: 'The Vertical Shell Soap Dish by uju', qty: 2, price: 24 },
+  { name: 'Bethlehem Star by uju – Bubble Pink', qty: 1, price: 80 }
+];
 
-const cartItems = getCartFromURL();
-
-function renderCart(items){
+function renderCartSummary() {
   const container = document.getElementById('cartSummary');
   let total = 0;
   let html = '';
-  items.forEach(it => {
-    const line = it.qty * it.price;
-    total += line;
-    html += `<div><span>$${it.price.toFixed(2)} - ${it.name} x ${it.qty}</span><span>$${line.toFixed(2)}</span></div>`;
+  cartItems.forEach(item => {
+    const lineTotal = item.qty * item.price;
+    total += lineTotal;
+    html += `<div class="cartRow">
+      <span>$${item.price}</span>
+      <span>${item.name}</span>
+      <span>x${item.qty}</span>
+      <span>$${lineTotal.toFixed(2)}</span>
+    </div>`;
   });
-  html += `<div class='total-row'><span></span><span>Total: $${total.toFixed(2)}</span></div>`;
+  html += `<div class="cartRow totalRow">
+    <span></span><span></span><span>Total</span><span>$${total.toFixed(2)}</span>
+  </div>`;
   container.innerHTML = html;
-  return total;
 }
 
-const total = renderCart(cartItems);
+renderCartSummary();
 
-// Load PayPal SDK with your live client ID
-const script = document.createElement('script');
-script.src = 'https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD';
-document.body.appendChild(script);
-
-script.onload = () => {
-  paypal.Buttons({
-    style: { layout: 'horizontal', shape:'rect' },
-    createOrder: (data, actions) => {
-      return actions.order.create({
-        purchase_units: [{
-          amount: { value: total.toFixed(2) },
-          items: cartItems.map(it => ({
-            name: it.name,
-            unit_amount: { currency_code: 'USD', value: it.price.toFixed(2) },
-            quantity: it.qty
-          }))
-        }],
-        application_context: {
-          brand_name: 'uju & Co.',
-          user_action: 'PAY_NOW',
-          shipping_preference: 'NO_SHIPPING'
-        }
-      });
-    },
-    onApprove: (data, actions) => {
-      return actions.order.capture().then(details => {
-        alert('Transaction completed by ' + details.payer.name.given_name + '!');
-      });
-    }
-  }).render('#paypal-buttons-container');
-};
+paypal.Buttons({
+  style: { layout: 'horizontal', shape:'rect' },
+  createOrder: function(data, actions) {
+    return actions.order.create({
+      purchase_units: [{
+        amount: {
+          currency_code: 'USD',
+          value: cartItems.reduce((sum,it)=>sum+it.qty*it.price,0).toFixed(2)
+        },
+        items: cartItems.map(it => ({
+          name: it.name,
+          unit_amount: { currency_code: 'USD', value: it.price.toFixed(2) },
+          quantity: it.qty
+        }))
+      }],
+      application_context: {
+        brand_name: 'Google Site Cart App-Live',
+        user_action: 'PAY_NOW',
+        shipping_preference: 'NO_SHIPPING'
+      }
+    });
+  },
+  onApprove: function(data, actions) {
+    return actions.order.capture().then(function(details) {
+      alert('Transaction completed by ' + details.payer.name.given_name + '!');
+    });
+  }
+}).render('#paypal-buttons-container');
 </script>
+
 </body>
 </html>

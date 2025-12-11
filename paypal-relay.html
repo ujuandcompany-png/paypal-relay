@@ -8,15 +8,16 @@
   body { font-family: 'Dosis', sans-serif; padding: 20px; }
   h1 { text-align: center; margin-bottom: 20px; }
   table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-family: 'Dosis'; font-size:16px; }
   th { background: #f8f8f8; }
   tfoot td { font-weight: bold; }
-  input.qtyInput { width: 50px; text-align: center; }
   #paypal-button-container { margin-top: 20px; text-align: center; }
-  button.updateBtn { padding: 4px 8px; margin-left:4px; cursor:pointer; }
+  input.qtyInput { width:50px; text-align:center; font-size:16px; padding:4px; }
+  button.removeBtn { padding:4px 8px; font-size:14px; border-radius:6px; cursor:pointer; background:#d9534f; color:white; border:none; }
 </style>
 </head>
 <body>
+
 <h1>uju & Co. PayPal Checkout</h1>
 
 <table id="cartTable">
@@ -27,7 +28,7 @@
       <th>Qty</th>
       <th>Unit Price</th>
       <th>Total</th>
-      <th>Remove</th>
+      <th>Action</th>
     </tr>
   </thead>
   <tbody></tbody>
@@ -43,95 +44,102 @@
 <div id="paypal-button-container"></div>
 
 <script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
-
 <script>
-// Get cart from localStorage
-function getCart(){ return localStorage.getItem('relayCart') ? JSON.parse(localStorage.getItem('relayCart')) : {}; }
-function saveCart(cart){ localStorage.setItem('relayCart', JSON.stringify(cart)); }
+// Read cart from localStorage
+function getCart() {
+  return localStorage.getItem('relayCart') ? JSON.parse(localStorage.getItem('relayCart')) : {};
+}
 
-// Render table
-function renderCart(){
+// Render the cart table
+function renderCart() {
+  const cart = getCart();
   const tbody = document.querySelector('#cartTable tbody');
   tbody.innerHTML = '';
-  let cart = getCart();
   let grandTotal = 0;
 
-  Object.keys(cart).forEach(key=>{
+  for(const key in cart){
     const item = cart[key];
-    const total = item.qty * item.price;
-    grandTotal += total;
+    const lineTotal = item.qty * item.price;
+    grandTotal += lineTotal;
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${item.name}</td>
       <td>${item.variant || ''}</td>
-      <td>
-        <input type="number" class="qtyInput" value="${item.qty}" min="1" max="${item.limit}" data-key="${key}">
-        <button class="updateBtn" data-key="${key}">Update</button>
-      </td>
+      <td><input class="qtyInput" type="number" min="0" max="${item.limit}" value="${item.qty}" data-key="${key}"></td>
       <td>$${item.price.toFixed(2)}</td>
-      <td>$${total.toFixed(2)}</td>
-      <td><button class="updateBtn" data-key="${key}" data-remove="1">Remove</button></td>
+      <td>$${lineTotal.toFixed(2)}</td>
+      <td><button class="removeBtn" data-key="${key}">Remove</button></td>
     `;
     tbody.appendChild(tr);
-  });
-
+  }
   document.getElementById('grandTotal').innerText = `$${grandTotal.toFixed(2)}`;
 }
 
-document.addEventListener('click', e=>{
-  if(e.target.classList.contains('updateBtn')){
+// Update quantity or remove item
+document.addEventListener('input', e => {
+  if(e.target.classList.contains('qtyInput')){
     const key = e.target.dataset.key;
-    let cart = getCart();
-    if(e.target.dataset.remove){
-      delete cart[key];
-    } else {
-      const input = document.querySelector(`input.qtyInput[data-key='${key}']`);
-      let newQty = parseInt(input.value);
-      if(newQty > cart[key].limit) newQty = cart[key].limit;
-      if(newQty <= 0) { delete cart[key]; }
-      else { cart[key].qty = newQty; }
-    }
-    saveCart(cart);
+    const val = parseInt(e.target.value);
+    const cart = getCart();
+    if(val <= 0) delete cart[key];
+    else cart[key].qty = val;
+    localStorage.setItem('relayCart', JSON.stringify(cart));
     renderCart();
   }
 });
 
-renderCart();
-
-// PayPal Buttons
-paypal.Buttons({
-  style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'checkout' },
-  createOrder: function(data, actions){
+document.addEventListener('click', e => {
+  if(e.target.classList.contains('removeBtn')){
+    const key = e.target.dataset.key;
     const cart = getCart();
-    let grandTotal = 0;
-    const items = Object.values(cart).map(i=>{
-      grandTotal += i.qty * i.price;
-      return {
-        name: i.name + (i.variant ? ' – ' + i.variant : ''),
-        unit_amount: { currency_code: 'USD', value: i.price.toFixed(2) },
-        quantity: i.qty
-      }
-    });
+    delete cart[key];
+    localStorage.setItem('relayCart', JSON.stringify(cart));
+    renderCart();
+  }
+});
 
-    return actions.order.create({
-      purchase_units:[{
-        amount:{ currency_code:'USD', value:grandTotal.toFixed(2), breakdown:{ item_total:{ currency_code:'USD', value:grandTotal.toFixed(2) } } },
-        items: items
-      }],
-      application_context: { brand_name:"uju & Co.", shipping_preference:"NO_SHIPPING" }
-    });
-  },
-  onApprove: function(data, actions){
-    return actions.order.capture().then(function(details){
-      alert(`Transaction completed by ${details.payer.name.given_name}!`);
-      localStorage.removeItem('relayCart');
-      window.close();
-    });
-  },
-  onCancel: function(){ alert("Payment cancelled."); },
-  onError: function(err){ console.error(err); alert("An error occurred during checkout."); }
-}).render('#paypal-button-container');
+// Initialize PayPal Buttons
+function initPayPal(){
+  const cart = getCart();
+  let grandTotal = 0;
+  Object.values(cart).forEach(i => grandTotal += i.qty*i.price);
+
+  paypal.Buttons({
+    style: { layout:'vertical', color:'gold', shape:'rect', label:'checkout' },
+    createOrder: function(data, actions){
+      return actions.order.create({
+        purchase_units: [{
+          amount: {
+            currency_code:'USD',
+            value: grandTotal.toFixed(2),
+            breakdown:{ item_total:{currency_code:'USD', value:grandTotal.toFixed(2)} }
+          },
+          items: Object.values(cart).map(i => ({
+            name: i.name + (i.variant ? ' – '+i.variant : ''),
+            unit_amount:{ currency_code:'USD', value:i.price.toFixed(2)},
+            quantity:i.qty
+          }))
+        }],
+        application_context:{ brand_name:"uju & Co.", shipping_preference:"NO_SHIPPING" }
+      });
+    },
+    onApprove: function(data, actions){
+      return actions.order.capture().then(details => {
+        alert(`Transaction completed by ${details.payer.name.given_name}!`);
+        localStorage.removeItem('relayCart');
+        window.close();
+      });
+    },
+    onCancel: function(){ alert("Payment cancelled."); },
+    onError: function(err){ console.error(err); alert("An error occurred."); }
+  }).render('#paypal-button-container');
+}
+
+// Initial render
+renderCart();
+initPayPal();
 </script>
+
 </body>
 </html>

@@ -1,53 +1,186 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>PayPal Relay Cart</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>uju & Co. PayPal Relay</title>
+<link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Dosis', sans-serif; padding:20px; color:#222; }
+  h1 { text-align:center; margin-bottom:8px; }
+  table { width:100%; border-collapse:collapse; margin-top:18px; }
+  th, td { border:1px solid #ddd; padding:10px; text-align:left; font-size:16px; }
+  th { background:#f8f8f8; }
+  tfoot td { font-weight:600; }
+  .qtyInput { width:64px; padding:6px; font-size:16px; text-align:center; border-radius:6px; border:1px solid #ccc; }
+  .removeBtn { padding:6px 10px; background:#d9534f; color:#fff; border:none; border-radius:6px; cursor:pointer; }
+  .checkoutBtn { margin-top:18px; background:#493b31; color:white; padding:12px 18px; border:none; border-radius:30px; font-size:16px; cursor:pointer; }
+  #msg { margin-top:10px; color:#28a745; font-weight:600; display:none; }
+</style>
 </head>
-<body style="font-family:Dosis;padding:20px;">
+<body>
+<h1>uju & Co. — Checkout</h1>
+<p style="text-align:center; margin-top:0; color:#666">Review items below. Adjust quantities, then click PayPal to pay.</p>
 
-<h2>Your Cart</h2>
-<div id="cartArea">Loading…</div>
+<table id="cartTable" aria-live="polite">
+  <thead>
+    <tr><th>Item</th><th>Variant</th><th>Qty</th><th>Unit</th><th>Line</th><th>Action</th></tr>
+  </thead>
+  <tbody></tbody>
+  <tfoot>
+    <tr><td colspan="4">Grand Total</td><td id="grandTotal">$0.00</td><td></td></tr>
+  </tfoot>
+</table>
 
+<div id="paypal-button-container" style="margin-top:16px; text-align:center;"></div>
+<div id="msg">Cart updated</div>
+
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <script>
-// Map key → product info
-const PRODUCTS = {
-  "JQ89PFTRRAXLN": { name:"The Vertical Shell Soap Dish by uju", price:24 },
-  "7V8SBRAM7LYQS": { name:"Eggshell Drying & Crushing Vase by uju", price:50 },
-  "BUBBLE": { name:"Tree Topper — Bubble Pink", price:32 },
-  "GLOW": { name:"Tree Topper — Glow Yellow", price:32 },
-  "CHAMPAGNE": { name:"Tree Topper — Champagne", price:32 },
-  "GOLD": { name:"Tree Topper — Gold", price:32 },
-  "SILVER": { name:"Tree Topper — Silver", price:32 }
+/* PRODUCT MASTER MAP — maps pid keys used in buttons to friendly names/prices.
+   Keep this authoritative — update if you change SKUs/prices.
+*/
+const PRODUCT_MAP = {
+  'JQ89PFTRRAXLN': { name: 'The Vertical Shell Soap Dish by uju', price: 24 },
+  '7V8SBRAM7LYQS': { name: 'Eggshell Drying & Crushing Vase by uju', price: 50 },
+  // Bethlehem Star variant PIDs are those long codes; price = 80
+  'H8VSFQ3UGVSHS': { name: 'Bethlehem Star', price: 80 },
+  '82G4AQASSXM3C': { name: 'Bethlehem Star', price: 80 },
+  '6HQ93S5CXBF2G': { name: 'Bethlehem Star', price: 80 },
+  'KV529MQQMDVVW': { name: 'Bethlehem Star', price: 80 },
+  '34R7GPEX946F2': { name: 'Bethlehem Star', price: 80 },
+  'UBXX6WTDBXVW8': { name: 'Bethlehem Star', price: 80 },
+  '2B79WY6VZMJWY': { name: 'Bethlehem Star', price: 80 }
 };
 
-function renderCart() {
-  const params = new URLSearchParams(window.location.search);
-  let html = "";
+const STORAGE_KEY = 'relayAccumCart_v1';
 
-  params.forEach((qtyStr, key) => {
-    const qty = parseInt(qtyStr);
-    if (!PRODUCTS[key] || qty <= 0) return;
-
-    const p = PRODUCTS[key];
-    const subtotal = p.price * qty;
-
-    html += `
-      <div style="margin:10px 0; padding:10px; border:1px solid #ccc;">
-        <strong>${p.name}</strong><br>
-        Price: $${p.price}<br>
-        Qty: ${qty}<br>
-        Subtotal: $${subtotal}
-      </div>
-    `;
-  });
-
-  if (!html) html = "Your cart is empty.";
-  document.getElementById("cartArea").innerHTML = html;
+// read product from incoming URL (one per click)
+function readIncomingItemFromURL() {
+  const p = new URLSearchParams(window.location.search);
+  if(!p.has('pid')) return null;
+  const pid = p.get('pid');
+  const qty = parseInt(p.get('qty')||'0',10) || 0;
+  // name/price/variant may be passed, but we prefer authoritative map
+  const variantLabel = p.get('variant') || '';
+  const map = PRODUCT_MAP[pid] || { name: p.get('name') || 'Item', price: parseFloat(p.get('price')||0) };
+  return { pid, name: map.name, price: map.price, qty, variant: variantLabel };
 }
 
-renderCart();
-</script>
+// merge incoming item into relay localStorage cart
+function mergeIncomingToStorage() {
+  const item = readIncomingItemFromURL();
+  const cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
 
+  if(item && item.qty > 0) {
+    // use key = pid + '::' + variant to allow same pid different color
+    const key = item.pid + '::' + (item.variant || '');
+    if(!cart[key]) cart[key] = { pid: item.pid, name: item.name, price: item.price, qty: 0, variant: item.variant };
+    cart[key].qty += item.qty;
+  }
+  // If URL asked qty=0, remove entry
+  if(item && item.qty === 0) {
+    const keyToRemove = item.pid + '::' + (item.variant || '');
+    delete cart[keyToRemove];
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+  // remove URL params so refresh doesn't re-add on reload
+  if(window.history && window.history.replaceState) {
+    window.history.replaceState({}, document.title, location.pathname);
+  }
+}
+
+// render cart from localStorage
+function renderCart() {
+  const cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  const tbody = document.querySelector('#cartTable tbody');
+  tbody.innerHTML = '';
+  let grand = 0;
+  Object.keys(cart).forEach(key=>{
+    const it = cart[key];
+    const line = it.price * it.qty;
+    grand += line;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(it.name)}</td>
+      <td>${escapeHtml(it.variant || '')}</td>
+      <td><input class="qtyInput" data-key="${key}" type="number" min="0" value="${it.qty}"></td>
+      <td>$${it.price.toFixed(2)}</td>
+      <td>$${line.toFixed(2)}</td>
+      <td><button class="removeBtn" data-key="${key}">Remove</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('grandTotal').innerText = `$${grand.toFixed(2)}`;
+  document.getElementById('msg').style.display = 'block';
+  setTimeout(()=>{ document.getElementById('msg').style.display='none'; },900);
+  attachCartEvents();
+}
+
+// safe escape
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// attach qty & remove handlers
+function attachCartEvents(){
+  document.querySelectorAll('.qtyInput').forEach(inp=>{
+    inp.onchange = ()=>{
+      const key = inp.dataset.key; const q = parseInt(inp.value||'0',10);
+      const cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      if(q <= 0) delete cart[key];
+      else cart[key].qty = q;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+      renderCart();
+    };
+  });
+  document.querySelectorAll('.removeBtn').forEach(b=>{
+    b.onclick = ()=>{
+      const key = b.dataset.key;
+      const cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      delete cart[key];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+      renderCart();
+    };
+  });
+}
+
+// PayPal integration using current storage
+function initPayPalButtons(){
+  paypal.Buttons({
+    style: { layout:'vertical', color:'gold', shape:'rect', label:'checkout' },
+    createOrder: function(data, actions){
+      const cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      const items = Object.values(cart);
+      if(items.length === 0) { alert('Cart is empty'); throw new Error('empty cart'); }
+      const total = items.reduce((s,i)=>s + i.price * i.qty, 0).toFixed(2);
+      return actions.order.create({
+        purchase_units: [{
+          amount: { currency_code:'USD', value: total, breakdown:{ item_total:{ currency_code:'USD', value: total } } },
+          items: items.map(i=>({
+            name: i.name + (i.variant ? ' – ' + i.variant : ''),
+            unit_amount: { currency_code:'USD', value: i.price.toFixed(2) },
+            quantity: i.qty
+          }))
+        }],
+        application_context: { brand_name: 'uju & Co.', shipping_preference: 'NO_SHIPPING' }
+      });
+    },
+    onApprove: function(data, actions){
+      return actions.order.capture().then(details=>{
+        alert('Transaction completed — thanks! ' + (details.payer?.name?.given_name || ''));
+        localStorage.removeItem(STORAGE_KEY);
+        window.close();
+      });
+    },
+    onCancel: function(){ alert('Payment cancelled'); },
+    onError: function(err){ console.error(err); alert('Error during checkout'); }
+  }).render('#paypal-button-container');
+}
+
+// Run merge -> render -> paypal
+mergeIncomingToStorage();
+renderCart();
+initPayPalButtons();
+</script>
 </body>
 </html>

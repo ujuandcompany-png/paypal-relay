@@ -3,122 +3,92 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>uju & Co. PayPal Cart Checkout</title>
+<title>uju & Co. PayPal Checkout</title>
 <style>
-  body { font-family: 'Dosis', sans-serif; margin: 20px; text-align:center; }
+  body { font-family: 'Dosis', sans-serif; margin: 20px; }
   h2 { text-align: center; margin-bottom: 20px; }
-  #cartSummary { max-width: 700px; margin: 0 auto 20px; text-align:left; font-size:16px; }
+  #cartSummary { max-width: 500px; margin: 0 auto 20px; }
   .cartRow { display: flex; justify-content: space-between; margin-bottom: 8px; }
-  .cartRow span:first-child { width: 60px; text-align:left; }
-  .cartRow span:nth-child(2) { flex-grow:1; padding-left:10px; text-align:left; }
-  .cartRow span:nth-child(3) { width: 40px; text-align:center; }
-  .cartRow span:last-child { width: 80px; text-align:right; }
   .totalRow { font-weight: bold; border-top:1px solid #ccc; padding-top:8px; }
-  #paypal-buttons-container { display: flex; justify-content: center; margin-top: 20px; }
-  #loadingMsg { font-size:16px; margin-top:10px; color:#555; }
+  #paypal-buttons-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+  }
 </style>
 </head>
 <body>
-
-<h2>uju & Co.<br><br>PayPal Cart Checkout</h2>
+<h2>uju & Co. PayPal Checkout</h2>
 <div id="cartSummary"></div>
-<div id="loadingMsg">Loading PayPal...</div>
 <div id="paypal-buttons-container"></div>
 
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE"></script>
 <script>
-function getCartItemsFromURL(){
-  const params = new URLSearchParams(window.location.search);
-  const cartItems = [];
-  for(const [key,value] of params.entries()){
-    const parts = decodeURIComponent(value).split('|');
-    if(parts.length>=3){
-      const name = parts[0];
-      const qty = parseInt(parts[1]) || 1;
-      const price = parseFloat(parts[2]) || 0;
-      cartItems.push({ name:name, qty:qty, price:price });
-    }
-  }
-  return cartItems;
+// Parse cart items from URL query string
+const params = new URLSearchParams(window.location.search);
+const cartItems = {};
+for (const [key, value] of params.entries()) {
+  const parts = key.split('|'); // name|qty|price
+  const variantName = decodeURIComponent(parts[0]);
+  const qty = parseInt(parts[1]);
+  const amount = parseFloat(parts[2]);
+  if (!cartItems[variantName]) cartItems[variantName] = { qty:0, price: amount };
+  cartItems[variantName].qty += qty;
 }
 
-function renderCartSummary(cartItems){
+// Render cart summary
+function renderCartSummary() {
   const container = document.getElementById('cartSummary');
   let total = 0;
   let html = '';
-  cartItems.forEach(item => {
+  for (const name in cartItems) {
+    const item = cartItems[name];
     const lineTotal = item.qty * item.price;
     total += lineTotal;
-    html += `<div class="cartRow">
-      <span>$${item.price.toFixed(2)}</span>
-      <span>${item.name}</span>
-      <span>x${item.qty}</span>
-      <span>$${lineTotal.toFixed(2)}</span>
-    </div>`;
-  });
-  html += `<div class="cartRow totalRow">
-    <span></span><span></span><span>Total</span><span>$${total.toFixed(2)}</span>
-  </div>`;
-  container.innerHTML = html;
-  return total;
-}
-
-function initPayPalButtons(){
-  if(typeof paypal==='undefined'){ setTimeout(initPayPalButtons,100); return; }
-
-  const cartItems = getCartItemsFromURL();
-  if(cartItems.length===0){
-    document.getElementById('cartSummary').innerHTML='<p>Cart is empty</p>';
-    document.getElementById('loadingMsg').style.display='none';
-    return;
+    html += `<div class="cartRow"><span>${name} x ${item.qty}</span><span>$${lineTotal.toFixed(2)}</span></div>`;
   }
-
-  const totalAmount = renderCartSummary(cartItems);
-  document.getElementById('loadingMsg').style.display='none';
-
-  paypal.Buttons({
-    style: { layout:'horizontal', shape:'rect' },
-    createOrder:function(data, actions){
-      return actions.order.create({
-        purchase_units:[{
-          amount:{ currency_code:'USD', value:totalAmount.toFixed(2) },
-          items: cartItems.map(it => ({
-            name: it.name,
-            unit_amount: { currency_code:'USD', value:it.price.toFixed(2) },
-            quantity: it.qty
-          }))
-        }],
-        application_context:{
-          brand_name:'Google Site Cart App-Live',
-          user_action:'PAY_NOW',
-          shipping_preference:'NO_SHIPPING'
-        }
-      });
-    },
-    onApprove:function(data, actions){
-      return actions.order.capture().then(function(details){
-        alert('Transaction completed by '+details.payer.name.given_name+'!');
-      });
-    },
-    onError:function(err){
-      console.error('PayPal Buttons error:', err);
-      alert('PayPal Buttons failed to load. Check console for details.');
-    }
-  }).render('#paypal-buttons-container');
+  html += `<div class="cartRow totalRow"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
+  container.innerHTML = html;
 }
 
-(function loadPayPalSDK(){
-  if(window.paypalSDKLoaded) return initPayPalButtons();
-  const script = document.createElement('script');
-  script.src='https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD&intent=CAPTURE';
-  script.onload=initPayPalButtons;
-  script.onerror=function(){
-    document.getElementById('loadingMsg').innerText='Failed to load PayPal SDK.';
-    console.error('PayPal SDK failed to load.');
-  };
-  document.head.appendChild(script);
-  window.paypalSDKLoaded=true;
-})();
-</script>
+renderCartSummary();
 
+// PayPal Buttons
+const totalValue = Object.values(cartItems).reduce((sum,it)=>sum+it.qty*it.price,0);
+const finalValue = totalValue > 0 ? totalValue.toFixed(2) : "0.01"; // minimum $0.01
+
+paypal.Buttons({
+  style: { layout: 'horizontal', shape:'rect' },
+  createOrder: function(data, actions) {
+    return actions.order.create({
+      purchase_units: [{
+        amount: {
+          currency_code: "USD",
+          value: finalValue,
+          breakdown: {
+            item_total: { currency_code: "USD", value: finalValue }
+          }
+        },
+        items: Object.entries(cartItems).map(([name, it])=>({
+          name: name,
+          unit_amount: { currency_code: "USD", value: it.price.toFixed(2) },
+          quantity: it.qty
+        }))
+      }],
+      application_context: {
+        brand_name: "uju & Co.",
+        user_action: "PAY_NOW",
+        shipping_preference: "NO_SHIPPING"
+      }
+    });
+  },
+  onApprove: function(data, actions) {
+    return actions.order.capture().then(function(details) {
+      alert("Transaction completed by " + details.payer.name.given_name + "!");
+    });
+  }
+}).render('#paypal-buttons-container');
+</script>
 </body>
 </html>

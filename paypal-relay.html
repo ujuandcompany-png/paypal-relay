@@ -1,59 +1,31 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>uju & Co. PayPal Relay Checkout</title>
-<style>
-  body { font-family: 'Dosis', sans-serif; padding:20px; max-width:600px; margin:auto; }
-  h1 { text-align:center; }
-  table { width:100%; border-collapse: collapse; margin-top:20px; }
-  th, td { border:1px solid #ccc; padding:8px; text-align:left; }
-  th { background:#f8f8f8; }
-  tfoot td { font-weight:bold; }
-  button { padding:8px 12px; margin:2px; font-family:'Dosis'; cursor:pointer; }
-  #paypal-button-container { margin-top:20px; text-align:center; }
-</style>
-</head>
-<body>
-<h1>uju & Co. PayPal Checkout</h1>
-
-<table id="cartTable">
-  <thead>
-    <tr>
-      <th>Item</th>
-      <th>Variant</th>
-      <th>Qty</th>
-      <th>Unit Price</th>
-      <th>Total</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-  <tfoot>
-    <tr>
-      <td colspan="4">Grand Total</td>
-      <td id="grandTotal">$0</td>
-    </tr>
-  </tfoot>
-</table>
-
-<div id="paypal-button-container"></div>
-
 <script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <script>
-// 1. Load cart from localStorage
+// 1. Load existing cart from localStorage
 let cart = localStorage.getItem('paypalCart') ? JSON.parse(localStorage.getItem('paypalCart')) : {};
-const tbody = document.querySelector('#cartTable tbody');
 
-function renderCart() {
+// 2. Merge incoming cart from URL parameter (if any)
+const params = new URLSearchParams(window.location.search);
+if(params.has('cart')){
+  try {
+    const incoming = JSON.parse(decodeURIComponent(params.get('cart')));
+    for(const key in incoming){
+      // If the item already exists, sum quantities
+      if(cart[key]) cart[key].qty += incoming[key].qty;
+      else cart[key] = incoming[key];
+    }
+    localStorage.setItem('paypalCart', JSON.stringify(cart));
+  } catch(e){ console.error('Invalid cart parameter', e); }
+}
+
+// 3. Render cart table
+const tbody = document.querySelector('#cartTable tbody');
+function renderCart(){
   tbody.innerHTML = '';
   let grandTotal = 0;
-
-  for (const key in cart) {
+  for(const key in cart){
     const item = cart[key];
     const lineTotal = item.qty * item.price;
     grandTotal += lineTotal;
-
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${item.name}</td>
@@ -68,7 +40,6 @@ function renderCart() {
     `;
     tbody.appendChild(tr);
   }
-
   document.getElementById('grandTotal').innerText = `$${grandTotal.toFixed(2)}`;
 }
 
@@ -83,22 +54,21 @@ function adjustQty(key, change){
 
 renderCart();
 
-// 2. Render PayPal Buttons
+// 4. PayPal Buttons
 paypal.Buttons({
   style: { layout:'vertical', color:'gold', shape:'rect', label:'checkout' },
-  createOrder: function(data, actions) {
+  createOrder: function(data, actions){
     const purchaseItems = [];
     let totalAmount = 0;
     for(const k in cart){
       const i = cart[k];
       purchaseItems.push({
         name: i.name + (i.variant ? ' - ' + i.variant : ''),
-        unit_amount: { currency_code:'USD', value: i.price.toFixed(2) },
+        unit_amount: { currency_code:'USD', value:i.price.toFixed(2) },
         quantity: i.qty
       });
-      totalAmount += i.qty * i.price;
+      totalAmount += i.price * i.qty;
     }
-
     return actions.order.create({
       purchase_units:[{
         amount: { currency_code:'USD', value: totalAmount.toFixed(2), breakdown:{ item_total:{ currency_code:'USD', value: totalAmount.toFixed(2) } } },
@@ -110,14 +80,12 @@ paypal.Buttons({
   onApprove: function(data, actions){
     return actions.order.capture().then(details=>{
       alert(`Transaction completed by ${details.payer.name.given_name}!`);
-      localStorage.removeItem('paypalCart'); // clear cart after checkout
+      localStorage.removeItem('paypalCart');
       renderCart();
       window.close();
     });
   },
   onCancel: function(){ alert("Payment cancelled."); },
-  onError: function(err){ console.error(err); alert("An error occurred during checkout."); }
+  onError: function(err){ console.error(err); alert("Checkout error."); }
 }).render('#paypal-button-container');
 </script>
-</body>
-</html>

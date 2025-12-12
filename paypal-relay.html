@@ -1,78 +1,156 @@
-<table id="cartTable" style="width:100%; border-collapse:collapse; margin-top:20px; font-family:'Dosis'; font-size:16px;">
-  <thead>
-    <tr>
-      <th>Item</th>
-      <th>Variant</th>
-      <th>Qty</th>
-      <th>Unit Price</th>
-      <th>Total</th>
-      <th>Remove</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-  <tfoot>
-    <tr>
-      <td colspan="4">Grand Total</td>
-      <td id="grandTotal">$0</td>
-      <td></td>
-    </tr>
-  </tfoot>
-</table>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>uju & Co. PayPal Checkout</title>
+<link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Dosis', sans-serif; padding: 20px; background:#f8f8f8; }
+  h1 { text-align:center; margin-bottom:20px; }
+  table { width:100%; border-collapse:collapse; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+  th, td { padding:12px; text-align:left; border-bottom:1px solid #ddd; }
+  th { background:#f0f0f0; font-weight:600; }
+  tfoot td { font-weight:bold; }
+  .qty-input { width:60px; padding:4px; border-radius:4px; border:1px solid #ccc; text-align:center; }
+  .delete-btn { padding:4px 8px; border:none; border-radius:6px; background:#dc3545; color:white; cursor:pointer; }
+  .delete-btn:hover { opacity:0.85; }
+  #paypal-button-container { margin-top:20px; text-align:center; }
+  #cartWrapper { max-width:800px; margin:auto; }
+</style>
+</head>
+<body>
+<h1>🛒 uju & Co. PayPal Checkout</h1>
+<div id="cartWrapper">
+  <table id="cartTable">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Variant</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Total</th>
+        <th>Remove</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4">Grand Total</td>
+        <td id="grandTotal">$0.00</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+  <div id="paypal-button-container"></div>
+</div>
 
+<script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <script>
+const PAYPAL_EMAIL = 'ujuandcompany@gmail.com';
+let cart = {};
+
+// 1️⃣ Load cart from localStorage first, otherwise from URL (for first visit)
 function loadCart() {
-  const params = new URLSearchParams(window.location.search);
-  let cart = {};
-  if(params.has('cart')) {
-    try { cart = JSON.parse(decodeURIComponent(params.get('cart'))); } catch(e){ console.error(e);}
+  const stored = localStorage.getItem('paypalCart');
+  if(stored){
+    cart = JSON.parse(stored);
+  } else {
+    const params = new URLSearchParams(window.location.search);
+    if(params.has('cart')){
+      try {
+        cart = JSON.parse(decodeURIComponent(params.get('cart')));
+        localStorage.setItem('paypalCart', JSON.stringify(cart));
+      } catch(e){ console.error('Failed to parse URL cart', e); }
+    }
   }
-  localStorage.setItem('paypalCart', JSON.stringify(cart));
-  renderCart();
 }
 
+// 2️⃣ Save cart
+function saveCart() {
+  localStorage.setItem('paypalCart', JSON.stringify(cart));
+}
+
+// 3️⃣ Render table
 function renderCart() {
   const tbody = document.querySelector('#cartTable tbody');
   tbody.innerHTML = '';
-  let cart = JSON.parse(localStorage.getItem('paypalCart') || '{}');
   let grandTotal = 0;
   for(const key in cart){
     const item = cart[key];
-    const total = item.qty * item.price;
+    const total = item.price * item.qty;
     grandTotal += total;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${item.name}</td>
       <td>${item.variant || ''}</td>
-      <td>
-        <button onclick="adjustQty('${key}',-1)">−</button>
-        <span style="margin:0 6px">${item.qty}</span>
-        <button onclick="adjustQty('${key}',1)">+</button>
-      </td>
+      <td><input class="qty-input" type="number" min="1" value="${item.qty}" onchange="updateQty('${key}',this.value)"></td>
       <td>$${item.price.toFixed(2)}</td>
       <td>$${total.toFixed(2)}</td>
-      <td><button onclick="removeItem('${key}')">x</button></td>
+      <td><button class="delete-btn" onclick="removeItem('${key}')">×</button></td>
     `;
     tbody.appendChild(tr);
   }
-  document.getElementById('grandTotal').innerText = '$' + grandTotal.toFixed(2);
+  document.getElementById('grandTotal').innerText = `$${grandTotal.toFixed(2)}`;
 }
 
-function adjustQty(key, change){
-  let cart = JSON.parse(localStorage.getItem('paypalCart') || '{}');
-  if(cart[key]){
-    cart[key].qty += change;
-    if(cart[key].qty <=0) delete cart[key];
+// 4️⃣ Update quantity
+function updateQty(key,value){
+  const qty = parseInt(value);
+  if(qty <= 0){
+    delete cart[key];
+  } else {
+    cart[key].qty = qty;
   }
-  localStorage.setItem('paypalCart', JSON.stringify(cart));
+  saveCart();
   renderCart();
 }
 
+// 5️⃣ Remove item
 function removeItem(key){
-  let cart = JSON.parse(localStorage.getItem('paypalCart') || '{}');
   delete cart[key];
-  localStorage.setItem('paypalCart', JSON.stringify(cart));
+  saveCart();
   renderCart();
 }
 
-window.addEventListener('load', loadCart);
+// 6️⃣ Render PayPal button
+function renderPayPalButton(){
+  paypal.Buttons({
+    style: { layout:'vertical', color:'gold', shape:'rect', label:'checkout' },
+    createOrder: function(data, actions){
+      const itemsArr = Object.values(cart).map(i=>({
+        name: i.name + (i.variant ? ' - ' + i.variant : ''),
+        unit_amount: { currency_code:'USD', value:i.price.toFixed(2) },
+        quantity: i.qty
+      }));
+      const total = itemsArr.reduce((sum,it)=>sum+it.unit_amount.value*it.quantity,0);
+      return actions.order.create({
+        purchase_units:[{
+          amount:{
+            currency_code:'USD',
+            value:total.toFixed(2),
+            breakdown:{ item_total:{ currency_code:'USD', value:total.toFixed(2) } }
+          },
+          items: itemsArr
+        }],
+        application_context:{ brand_name:"uju & Co.", shipping_preference:"NO_SHIPPING" }
+      });
+    },
+    onApprove: function(data, actions){
+      return actions.order.capture().then(details=>{
+        alert(`Transaction completed by ${details.payer.name.given_name}!`);
+        cart = {};
+        saveCart();
+        renderCart();
+      });
+    }
+  }).render('#paypal-button-container');
+}
+
+// 7️⃣ Init
+loadCart();
+renderCart();
+renderPayPalButton();
 </script>
+</body>
+</html>

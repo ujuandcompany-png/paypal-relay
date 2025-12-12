@@ -1,91 +1,102 @@
+<!-- RELAY PAGE SCRIPT -->
+<div style="max-width:600px; margin:auto; font-family:'Dosis'; font-size:16px;">
+  <h2>uju & Co. PayPal Checkout</h2>
+  <table id="cartTable" style="width:100%; border-collapse:collapse; margin-top:20px;">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Variant</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4">Grand Total</td>
+        <td id="grandTotal">$0.00</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div id="paypal-button-container" style="margin-top:20px; text-align:center;"></div>
+</div>
+
 <script src="https://www.paypal.com/sdk/js?client-id=AYMMP5tG5xhXOMwg9VwtF2SNXhO1txVUk2USwhWO9lcyrUAMwZbdKQSqj2ZwfIUUa44RaHxxrWryePnD&currency=USD"></script>
 <script>
-// 1. Load existing cart from localStorage
-let cart = localStorage.getItem('paypalCart') ? JSON.parse(localStorage.getItem('paypalCart')) : {};
-
-// 2. Merge incoming cart from URL parameter (if any)
-const params = new URLSearchParams(window.location.search);
-if(params.has('cart')){
-  try {
-    const incoming = JSON.parse(decodeURIComponent(params.get('cart')));
-    for(const key in incoming){
-      // If the item already exists, sum quantities
-      if(cart[key]) cart[key].qty += incoming[key].qty;
-      else cart[key] = incoming[key];
-    }
-    localStorage.setItem('paypalCart', JSON.stringify(cart));
-  } catch(e){ console.error('Invalid cart parameter', e); }
-}
-
-// 3. Render cart table
-const tbody = document.querySelector('#cartTable tbody');
-function renderCart(){
+function loadCart() {
+  const cart = localStorage.getItem('paypalCart') ? JSON.parse(localStorage.getItem('paypalCart')) : {};
+  const tbody = document.querySelector('#cartTable tbody');
   tbody.innerHTML = '';
   let grandTotal = 0;
-  for(const key in cart){
-    const item = cart[key];
-    const lineTotal = item.qty * item.price;
+
+  Object.values(cart).forEach(item => {
+    const lineTotal = item.price * item.qty;
     grandTotal += lineTotal;
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${item.name}</td>
       <td>${item.variant || ''}</td>
       <td>
-        <button onclick="adjustQty('${key}',-1)">−</button>
-        ${item.qty}
-        <button onclick="adjustQty('${key}',1)">+</button>
+        <input type="number" min="0" value="${item.qty}" style="width:50px;" onchange="updateQty('${item.pid}${item.variant?'-'+item.variant:''}', this.value)">
       </td>
       <td>$${item.price.toFixed(2)}</td>
       <td>$${lineTotal.toFixed(2)}</td>
     `;
     tbody.appendChild(tr);
-  }
-  document.getElementById('grandTotal').innerText = `$${grandTotal.toFixed(2)}`;
+  });
+
+  document.getElementById('grandTotal').innerText = '$' + grandTotal.toFixed(2);
+
+  return cart;
 }
 
-function adjustQty(key, change){
-  if(cart[key]){
-    cart[key].qty += change;
-    if(cart[key].qty <=0) delete cart[key];
-    localStorage.setItem('paypalCart', JSON.stringify(cart));
-    renderCart();
-  }
+function updateQty(key, newQty){
+  const cart = localStorage.getItem('paypalCart') ? JSON.parse(localStorage.getItem('paypalCart')) : {};
+  newQty = parseInt(newQty);
+  if(newQty <= 0) delete cart[key];
+  else cart[key].qty = newQty;
+  localStorage.setItem('paypalCart', JSON.stringify(cart));
+  loadCart();
 }
 
-renderCart();
+// Render PayPal Buttons
+function renderPayPal(cart){
+  const grandTotal = Object.values(cart).reduce((sum,i)=>sum+i.price*i.qty,0);
 
-// 4. PayPal Buttons
-paypal.Buttons({
-  style: { layout:'vertical', color:'gold', shape:'rect', label:'checkout' },
-  createOrder: function(data, actions){
-    const purchaseItems = [];
-    let totalAmount = 0;
-    for(const k in cart){
-      const i = cart[k];
-      purchaseItems.push({
-        name: i.name + (i.variant ? ' - ' + i.variant : ''),
-        unit_amount: { currency_code:'USD', value:i.price.toFixed(2) },
-        quantity: i.qty
+  paypal.Buttons({
+    style: { layout:'vertical', color:'gold', shape:'rect', label:'checkout' },
+    createOrder: function(data, actions){
+      return actions.order.create({
+        purchase_units:[{
+          amount:{
+            currency_code:'USD',
+            value: grandTotal.toFixed(2),
+            breakdown: { item_total: { currency_code:'USD', value: grandTotal.toFixed(2) } }
+          },
+          items: Object.values(cart).map(i=>({
+            name: i.name + (i.variant?' – '+i.variant:''),
+            unit_amount: { currency_code:'USD', value:i.price.toFixed(2) },
+            quantity: i.qty
+          }))
+        }],
+        application_context: { brand_name:"uju & Co.", shipping_preference:"NO_SHIPPING" }
       });
-      totalAmount += i.price * i.qty;
-    }
-    return actions.order.create({
-      purchase_units:[{
-        amount: { currency_code:'USD', value: totalAmount.toFixed(2), breakdown:{ item_total:{ currency_code:'USD', value: totalAmount.toFixed(2) } } },
-        items: purchaseItems
-      }],
-      application_context:{ brand_name:"uju & Co.", shipping_preference:"NO_SHIPPING" }
-    });
-  },
-  onApprove: function(data, actions){
-    return actions.order.capture().then(details=>{
-      alert(`Transaction completed by ${details.payer.name.given_name}!`);
-      localStorage.removeItem('paypalCart');
-      renderCart();
-      window.close();
-    });
-  },
-  onCancel: function(){ alert("Payment cancelled."); },
-  onError: function(err){ console.error(err); alert("Checkout error."); }
-}).render('#paypal-button-container');
+    },
+    onApprove: function(data, actions){
+      return actions.order.capture().then(function(details){
+        alert(`Transaction completed by ${details.payer.name.given_name}!`);
+        localStorage.removeItem('paypalCart');
+        window.close();
+      });
+    },
+    onCancel: function(){ alert('Payment cancelled.'); },
+    onError: function(err){ console.error(err); alert('An error occurred during checkout.'); }
+  }).render('#paypal-button-container');
+}
+
+const cart = loadCart();
+renderPayPal(cart);
 </script>
